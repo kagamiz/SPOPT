@@ -18,7 +18,12 @@ where K is a semi-algebraic set, by using Lasserre Hierarchy [1].
 
 ### Requirements
 
-SPOPT uses [CMake](http://www.cmake.org) to build entire package. Please download and install [CMake](http://www.cmake.org).
+SPOPT uses [CMake](http://www.cmake.org) to build the entire package. Please download and install [CMake](http://www.cmake.org).
+
+Also, following C++ libraries are used in the source code. Please install them, and place the header file and the library file inside the search path used by your system.
+
+- [Eigen](http://eigen.tuxfamily.org/)
+- [yaml-cpp (ver 0.6.3)](https://github.com/jbeder/yaml-cpp)
 
 ---
 
