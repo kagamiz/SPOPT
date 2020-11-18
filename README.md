@@ -16,7 +16,7 @@ where K is a semi-algebraic set, by using Lasserre Hierarchy [1].
 
 ---
 
-### Requirements
+### Requirements and dependencies
 
 SPOPT uses [CMake](http://www.cmake.org) to build the entire package. Please download and install [CMake](http://www.cmake.org).
 
