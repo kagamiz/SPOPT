@@ -1,0 +1,15 @@
+#ifndef __STANDARD_LIBRARIES_HPP__
+#define __STANDARD_LIBRARIES_HPP__
+#include <algorithm>
+#include <ctime>
+#include <fstream>
+#include <functional>
+#include <iomanip>
+#include <iostream>
+#include <map>
+#include <queue>
+#include <random>
+#include <set>
+#include <sstream>
+#include <vector>
+#endif //__STANDARD_LIBRARIES_HPP__
