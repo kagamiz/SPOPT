@@ -148,6 +148,11 @@ namespace SPOPT {
                 return ret;
             }
 
+            Polynomial &operator += (const Polynomial &rhs) {
+                *this = *this + rhs;
+                return *this;
+            }
+
             const Polynomial operator -() const {
                 Polynomial ret = *this;
                 for (auto &monomial : ret.monomials) {
@@ -158,6 +163,11 @@ namespace SPOPT {
 
             Polynomial operator - (const Polynomial &rhs) {
                 return *this + (-rhs);
+            }
+
+            Polynomial &operator -= (const Polynomial &rhs) {
+                *this = *this - rhs;
+                return *this;
             }
 
             Polynomial operator * (const Monomial &m) {
