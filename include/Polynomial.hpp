@@ -42,6 +42,24 @@ namespace SPOPT {
                 return *this;
             }
 
+            Monomial DifferentiateBy(int ind) {
+                int ct = std::count_if(this->term.begin(), this->term.end(), [&](int x) { return x == ind; });    
+                if (ct == 0) {
+                    return Monomial();
+                }
+                Term t;
+                bool skipped = false;
+                for (auto var : this->term) {
+                    if (var != ind || skipped) {
+                        t.emplace_back(var);
+                    }
+                    else {
+                        skipped = true;
+                    }
+                }
+                return Monomial(t, this->coefficient * ct, /* sorted = */true);
+            }
+
             std::string ToString(bool withSign = true) {
                 std::ostringstream oss;
                 if (withSign) {
@@ -73,6 +91,11 @@ namespace SPOPT {
     class Polynomial {
         public:
             Polynomial(){}
+            Polynomial(Monomial m) {
+                monomials[m.term] = m.coefficient;
+                degree = m.degree;
+                maxIndex = *max_element(m.term.begin(), m.term.end());
+            }
             Polynomial(std::map<Term, double> &m) : monomials(m) {
                 degree = 0;
                 maxIndex = -1;
