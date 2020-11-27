@@ -31,7 +31,7 @@ namespace SPOPT {
             }
         }
 
-        if (problemDataConfig["IndexSetsFile"]) {
+        if (problemDataConfig["indexSetsFile"]) {
             std::ifstream ifs;
             ifs.open(problemDataConfig.as<std::string>("examples/index_sets.txt"));
 
@@ -57,12 +57,12 @@ namespace SPOPT {
                 originalJunctionTree[v - 1].emplace_back(u - 1);
             }
         }
+
+        hierarchyDegree = problemDataConfig["hierarchyDegree"].as<int>((objectiveFunction.degree + 1) / 2);
     }
 
-    void ProblemData::ConstructSDP(int degree)
+    void ProblemData::ConstructSDP()
     {
-        hierarchyDegree = degree;
-
         _ConstructNewConstraints();
         _ConstructTermMap();
         _ConstructVectorB();
@@ -121,18 +121,20 @@ namespace SPOPT {
 
         int newVariableID = objectiveFunction.maxIndex + 1;
 
-        objectiveMonomials.resize(originalIndexSets.size());
-        for (auto monomial : objectiveFunction.monomials) {
-            Term t = monomial.first;
-            t.erase(unique(t.begin(), t.end()), t.end());
-            objectiveMonomials[indexSetToID[t]].emplace_back(monomial.first, monomial.second, /* sorted = */true);
-        }
+        if (enableGradientConstraint) {
+            objectiveMonomials.resize(originalIndexSets.size());
+            for (auto monomial : objectiveFunction.monomials) {
+                Term t = monomial.first;
+                t.erase(unique(t.begin(), t.end()), t.end());
+                objectiveMonomials[indexSetToID[t]].emplace_back(monomial.first, monomial.second, /* sorted = */true);
+            }
 
-        objectiveIDs.resize(originalIndexSets.size());
-        for (int i = 0; i < originalIndexSets.size(); i++) {
-            objectiveIDs[i].resize(originalIndexSets[i].size());
-            for (int j = 0; j < originalIndexSets[i].size(); j++) {
-                objectiveIDs[i][j] = newVariableID++;
+            objectiveIDs.resize(originalIndexSets.size());
+            for (int i = 0; i < originalIndexSets.size(); i++) {
+                objectiveIDs[i].resize(originalIndexSets[i].size());
+                for (int j = 0; j < originalIndexSets[i].size(); j++) {
+                    objectiveIDs[i][j] = newVariableID++;
+                }
             }
         }
 
@@ -168,10 +170,12 @@ namespace SPOPT {
     {
         std::vector<int> newVariables, originalVariables;
 
-        for (auto tmpID : objectiveIDs[v]) {
-            if (variableOrderMap.find(tmpID) == variableOrderMap.end()) {
-                variableOrderMap[tmpID] = -1;
-                newVariables.emplace_back(tmpID);
+        if (enableGradientConstraint) {
+            for (auto tmpID : objectiveIDs[v]) {
+                if (variableOrderMap.find(tmpID) == variableOrderMap.end()) {
+                    variableOrderMap[tmpID] = -1;
+                    newVariables.emplace_back(tmpID);
+                }
             }
         }
 
@@ -182,11 +186,7 @@ namespace SPOPT {
             }
         }
 
-        std::vector<int> newIndexSet = originalIndexSets[v];
-        newIndexSet.insert(newIndexSet.end(), newVariables.begin(), newVariables.end());
         int newIndexSetID = convertedIndexSets.size();
-        std::sort(newIndexSet.begin(), newIndexSet.end());
-        convertedIndexSets.emplace_back(newIndexSet);
 
         if (p == -1) {
             for (int i = 0; i < constraintIDs.size(); i++) {
@@ -205,9 +205,12 @@ namespace SPOPT {
         for (int i = 0; i < originalIndexSets[v].size(); i++) {
             if (!visited[originalIndexSets[v][i]]) {
                 visited[originalIndexSets[v][i]] = true;
-                Term t = {objectiveIDs[v][i]};
-                convertedEqualityConstraints.emplace_back(Polynomial(Monomial(t, /* sorted = */true)));
-                groupIDOfConvertedEqualityConstraints.emplace_back(newIndexSetID);
+
+                if (enableGradientConstraint) {
+                    Term t = {objectiveIDs[v][i]};
+                    convertedEqualityConstraints.emplace_back(Polynomial(Monomial(t, /* sorted = */true)));
+                    groupIDOfConvertedEqualityConstraints.emplace_back(newIndexSetID);
+                }
 
                 originalVariables.emplace_back(originalIndexSets[v][i]);
             }
@@ -216,6 +219,16 @@ namespace SPOPT {
         int childNum = (int)originalJunctionTree[v].size() - (p == -1 ? 0 : 1);
 
         if (childNum == 0) {
+            std::vector<int> newIndexSet = originalIndexSets[v];
+            for (int i = 0; i < constraintIDs.size(); i++) {
+                newIndexSet.emplace_back(constraintIDs[i][v]);
+            }
+            if (enableGradientConstraint) {
+                newIndexSet.insert(newIndexSet.end(), objectiveIDs[v].begin(), objectiveIDs[v].end());
+            }
+            std::sort(newIndexSet.begin(), newIndexSet.end());
+            convertedIndexSets.emplace_back(newIndexSet);
+
             for (int i = 0; i < constraintMonomials.size(); i++) {
                 Term t = {constraintIDs[i][v]};
                 Polynomial poly(Monomial(t, -1, /* sorted = */true));
@@ -226,16 +239,18 @@ namespace SPOPT {
                 groupIDOfConvertedEqualityConstraints.emplace_back(newIndexSetID);
             }
 
-            for (int i = 0; i < originalIndexSets[v].size(); i++) {
-                Term t = {objectiveIDs[v][i]};
-                Polynomial poly(Monomial(t, -1, /* sorted = */true));
-                for (int j = 0; j < objectiveMonomials[v].size(); j++) {
-                    Monomial dif = objectiveMonomials[v][j].DifferentiateBy(originalIndexSets[v][i]);
-                    if (dif.term.size() == 0 && std::abs(dif.coefficient) <= EPS) continue;
-                    poly += dif;
+            if (enableGradientConstraint) {
+                for (int i = 0; i < originalIndexSets[v].size(); i++) {
+                    Term t = {objectiveIDs[v][i]};
+                    Polynomial poly(Monomial(t, -1, /* sorted = */true));
+                    for (int j = 0; j < objectiveMonomials[v].size(); j++) {
+                        Monomial dif = objectiveMonomials[v][j].DifferentiateBy(originalIndexSets[v][i]);
+                        if (dif.term.size() == 0 && std::abs(dif.coefficient) <= EPS) continue;
+                        poly += dif;
+                    }
+                    convertedEqualityConstraints.emplace_back(poly);
+                    groupIDOfConvertedEqualityConstraints.emplace_back(newIndexSetID);
                 }
-                convertedEqualityConstraints.emplace_back(poly);
-                groupIDOfConvertedEqualityConstraints.emplace_back(newIndexSetID);
             }
         }
         else {
@@ -244,7 +259,7 @@ namespace SPOPT {
                 prvConstraintVariables.emplace_back(constraintIDs[i][v]);
             }
 
-            std::vector<int> prvObjectiveVariables = objectiveIDs[v];
+            std::vector<int> prvObjectiveVariables = (enableGradientConstraint ? objectiveIDs[v] : std::vector<int>());
 
             for (int i = 0; i < originalJunctionTree[v].size(); i++) {
                 int nx = originalJunctionTree[v][i];
@@ -295,56 +310,58 @@ namespace SPOPT {
 
                 std::vector<int> nxtObjectiveVariables;
 
-                for (int j = 0; j < originalIndexSets[v].size(); j++) {
-                    auto it = std::find(originalIndexSets[nx].begin(), originalIndexSets[nx].end(), originalIndexSets[v][j]);
+                if (enableGradientConstraint) {
+                    for (int j = 0; j < originalIndexSets[v].size(); j++) {
+                        auto it = std::find(originalIndexSets[nx].begin(), originalIndexSets[nx].end(), originalIndexSets[v][j]);
 
-                    if (it != originalIndexSets[nx].end()) {
-                        int pos = it - originalIndexSets[nx].begin();
-
-                        if (variableOrderMap.find(objectiveIDs[nx][pos]) == variableOrderMap.end()) {
-                            variableOrderMap[objectiveIDs[nx][pos]] = -1;
-                            newVariables.emplace_back(objectiveIDs[nx][pos]);
-                        }
-
-                        newIndexSet.emplace_back(objectiveIDs[nx][pos]);
-                    }
-
-                    Polynomial poly;
-
-                    if (childNum > 1) {
                         if (it != originalIndexSets[nx].end()) {
                             int pos = it - originalIndexSets[nx].begin();
 
-                            poly += Monomial(Term({prvObjectiveVariables[j]}), -1, /* sorted = */true);
-                            poly += Monomial(Term({objectiveIDs[nx][pos]}), 1, /* sorted = */true);
-                            poly += Monomial(Term({newVariableIndex}), 1, /* sorted = */true);
+                            if (variableOrderMap.find(objectiveIDs[nx][pos]) == variableOrderMap.end()) {
+                                variableOrderMap[objectiveIDs[nx][pos]] = -1;
+                                newVariables.emplace_back(objectiveIDs[nx][pos]);
+                            }
 
-                            newIndexSet.emplace_back(newVariableIndex);
-                            nxtObjectiveVariables.emplace_back(newVariableIndex);
+                            newIndexSet.emplace_back(objectiveIDs[nx][pos]);
+                        }
 
-                            variableOrderMap[newVariableIndex] = -1;
-                            newVariables.emplace_back(newVariableIndex);
-                            newVariableIndex++;
+                        Polynomial poly;
+
+                        if (childNum > 1) {
+                            if (it != originalIndexSets[nx].end()) {
+                                int pos = it - originalIndexSets[nx].begin();
+
+                                poly += Monomial(Term({prvObjectiveVariables[j]}), -1, /* sorted = */true);
+                                poly += Monomial(Term({objectiveIDs[nx][pos]}), 1, /* sorted = */true);
+                                poly += Monomial(Term({newVariableIndex}), 1, /* sorted = */true);
+
+                                newIndexSet.emplace_back(newVariableIndex);
+                                nxtObjectiveVariables.emplace_back(newVariableIndex);
+
+                                variableOrderMap[newVariableIndex] = -1;
+                                newVariables.emplace_back(newVariableIndex);
+                                newVariableIndex++;
+                            }
+                            else {
+                                nxtObjectiveVariables.emplace_back(prvObjectiveVariables[j]);
+                            }
                         }
                         else {
-                            nxtObjectiveVariables.emplace_back(prvObjectiveVariables[j]);
+                            poly += Monomial(Term({prvObjectiveVariables[j]}), -1, /* sorted = */true);
+                            if (it != originalIndexSets[nx].end()) {
+                                int pos = it - originalIndexSets[nx].begin();
+                                poly += Monomial(Term({objectiveIDs[nx][pos]}), 1, /* sorted = */true);
+                            }
+                            for (int k = 0; k < objectiveMonomials[v].size(); k++) {
+                                Monomial dif = objectiveMonomials[v][k].DifferentiateBy(originalIndexSets[v][j]);
+                                if (dif.term.size() == 0 && std::abs(dif.coefficient) <= EPS) continue;
+                                poly += dif;
+                            }
                         }
-                    }
-                    else {
-                        poly += Monomial(Term({prvObjectiveVariables[j]}), -1, /* sorted = */true);
-                        if (it != originalIndexSets[nx].end()) {
-                            int pos = it - originalIndexSets[nx].begin();
-                            poly += Monomial(Term({objectiveIDs[nx][pos]}), 1, /* sorted = */true);
+                        if (poly.monomials.size() > 0) {
+                            convertedEqualityConstraints.emplace_back(poly);
+                            groupIDOfConvertedEqualityConstraints.emplace_back(newIndexSetID);
                         }
-                        for (int k = 0; k < objectiveMonomials[v].size(); k++) {
-                            Monomial dif = objectiveMonomials[v][k].DifferentiateBy(originalIndexSets[v][j]);
-                            if (dif.term.size() == 0 && std::abs(dif.coefficient) <= EPS) continue;
-                            poly += dif;
-                        }
-                    }
-                    if (poly.monomials.size() > 0) {
-                        convertedEqualityConstraints.emplace_back(poly);
-                        groupIDOfConvertedEqualityConstraints.emplace_back(newIndexSetID);
                     }
                 }
 
@@ -451,7 +468,7 @@ namespace SPOPT {
 
         int maxSize = 0;
         for (auto convertedIndexSet : convertedIndexSets) {
-            maxSize = std::max(maxSize, (int)convertedIndexSets.size());
+            maxSize = std::max(maxSize, (int)convertedIndexSet.size());
         }
 
         std::vector<std::vector<long long>> C(maxSize + hierarchyDegree + 1, std::vector<long long>(maxSize + hierarchyDegree + 1));
@@ -520,6 +537,13 @@ namespace SPOPT {
                         }
                     }
                     int id = termToInteger[merged];
+                    if (termToInteger.find(merged) == termToInteger.end()) {
+                            std::cout << "OMG!!" << std::endl;
+                            for (auto elem : merged) {
+                                std::cout << elem << " ";
+                            }
+                            std::cout << std::endl;
+                        }
                     tripletList.emplace_back(id, leftmostPosition, 1);
                     leftmostPosition++;
                 }
@@ -529,12 +553,13 @@ namespace SPOPT {
         for (int pt = 0; pt < constraints.size(); pt++) {
             int i = groupIDs[pt];
             int sz = convertedTermSets[i].size();
+            int polyDeg = constraints[pt].degree;
 
             for (int j = 0; j < sz; j++) {
                 for (int k = j; k < sz; k++) {
                     Term t1 = convertedTermSets[i][j];
                     Term t2 = convertedTermSets[i][k];
-                    if (t1.size() + t2.size() + constraints[pt].degree > 2 * hierarchyDegree) continue;
+                    if (t1.size() > hierarchyDegree - (polyDeg + 1) / 2 || t2.size() > hierarchyDegree - (polyDeg + 1) / 2) continue;
 
                     Term _merged;
                     int it1 = 0, it2 = 0, len = t1.size() + t2.size();
@@ -559,6 +584,14 @@ namespace SPOPT {
                             else {
                                 merged.push_back(t3[it3]); it3++;
                             }
+                        }
+
+                        if (termToInteger.find(merged) == termToInteger.end()) {
+                            std::cout << "OMG!!" << std::endl;
+                            for (auto elem : merged) {
+                                std::cout << elem << " ";
+                            }
+                            std::cout << std::endl;
                         }
 
                         int id = termToInteger[merged];
@@ -698,5 +731,16 @@ namespace SPOPT {
         c *= E[0];
         primalScaler = rowNormMean / std::max(c.norm(), 1e-6);
         c *= primalScaler;
+    }
+
+    void ProblemData::ShowConstraints()
+    {
+        for (auto &eqConstraint : convertedEqualityConstraints) {
+            std::cout << eqConstraint.ToString() << " == 0" << std::endl;
+        }
+
+        for (auto &ineqConstraint : convertedInequalityConstraints) {
+            std::cout << ineqConstraint.ToString() << " >= 0" << std::endl;
+        }
     }
 }

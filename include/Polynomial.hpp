@@ -15,7 +15,7 @@ namespace SPOPT {
 
             Monomial operator * (const Monomial &rhs) {
                 Term newTerm;
-                std::merge(this->term.begin(), this->term.end(), rhs.term.begin(), rhs.term.end(), newTerm);
+                std::merge(this->term.begin(), this->term.end(), rhs.term.begin(), rhs.term.end(), std::back_inserter(newTerm));
                 return Monomial(newTerm, this->coefficient * rhs.coefficient, /* sorted = */true);
             }
 
@@ -64,6 +64,7 @@ namespace SPOPT {
                 std::ostringstream oss;
                 if (withSign) {
                     oss << std::showpos << coefficient;
+                    oss << std::noshowpos;
                 }
                 else {
                     oss << coefficient;
@@ -90,18 +91,22 @@ namespace SPOPT {
 
     class Polynomial {
         public:
-            Polynomial(){}
+            Polynomial(){ degree = 0; maxIndex = -1; }
             Polynomial(Monomial m) {
                 monomials[m.term] = m.coefficient;
                 degree = m.degree;
-                maxIndex = *max_element(m.term.begin(), m.term.end());
+                if (m.term.size()) {
+                    maxIndex = *max_element(m.term.begin(), m.term.end());
+                }
             }
             Polynomial(std::map<Term, double> &m) : monomials(m) {
                 degree = 0;
                 maxIndex = -1;
                 for (auto monomial : monomials) {
                     degree = std::max(degree, (int)monomial.first.size());
-                    maxIndex = *max_element(monomial.first.begin(), monomial.first.end());
+                    if (monomial.first.size()) {
+                        maxIndex = *max_element(monomial.first.begin(), monomial.first.end());
+                    }
                 }
             }
             Polynomial(std::vector<Monomial> &m) {
@@ -115,7 +120,9 @@ namespace SPOPT {
                         monomials[monomial.term] += monomial.coefficient;
                     }
                     degree = std::max(degree, monomial.degree);
-                    maxIndex = std::max(maxIndex, *std::max_element(monomial.term.begin(), monomial.term.end()));
+                    if (monomial.term.size()) {
+                        maxIndex = std::max(maxIndex, *std::max_element(monomial.term.begin(), monomial.term.end()));
+                    }
                 }
             }
             Polynomial(std::string fileName) {
@@ -138,7 +145,9 @@ namespace SPOPT {
                         ifs >> tmp[j]; tmp[j]--;
                     }
                     std::sort(tmp.begin(), tmp.end());
-                    this->maxIndex = std::max(this->maxIndex, *std::max_element(tmp.begin(), tmp.end()));
+                    if (tmp.size()) {
+                        this->maxIndex = std::max(this->maxIndex, *std::max_element(tmp.begin(), tmp.end()));
+                    }
 
                     double coef;
                     ifs >> coef;
@@ -200,7 +209,9 @@ namespace SPOPT {
                     ret.monomials[newMonomial.term] = newMonomial.coefficient;
                 }
                 ret.degree = this->degree + m.degree;
-                ret.maxIndex = std::max(this->maxIndex, *std::max_element(m.term.begin(), m.term.end()));
+                if (m.term.size()) {
+                    ret.maxIndex = std::max(this->maxIndex, *std::max_element(m.term.begin(), m.term.end()));
+                }
                 return ret;
             }
 

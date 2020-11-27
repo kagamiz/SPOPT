@@ -31,7 +31,8 @@ namespace SPOPT {
             // TODO: error handling
             void LoadConfig(std::string fileName);
 
-            void ConstructSDP(int degree);
+            void ConstructSDP();
+            void ShowConstraints();
 
         private:
             /* Data to be loaded from the function `LoadConfig`. */
