@@ -1,0 +1,7 @@
+enableScaling : true
+enableGradientConstraint : false
+objectiveFunctionFile : examples/affine.txt
+equalityConstraintFiles :
+  - examples/sphericalConstraint.txt
+indexSetsFile : examples/index_sets.txt
+hierarchyDegree : 1
