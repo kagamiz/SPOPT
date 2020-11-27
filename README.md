@@ -29,10 +29,12 @@ Also, following C++ libraries are used in the source code. Please install them, 
 
 ### Compilation
 
-Typing `cmake` at the command line will compile the code and create SPOPT executable program in the `bin` folder.
+By typing following commands, `cmake` will automatically generate `Makefile` and `make` command makes it able to compile the code and create SPOPT executable program in the `build` folder.
 
 ```sh
-cmake
+cd build
+cmake ..
+make
 ```
 
 ---
