@@ -61,6 +61,11 @@ namespace SPOPT {
         hierarchyDegree = problemDataConfig["hierarchyDegree"].as<int>((objectiveFunction.degree + 1) / 2);
     }
 
+    bool ProblemData::IsUnconstrained() const
+    {
+        return originalEqualityConstraints.size() == 0 && originalInequalityConstraints.size() == 0 && enableGradientConstraint == false;
+    }
+
     void ProblemData::ConstructSDP()
     {
         _ConstructNewConstraints();
@@ -459,6 +464,8 @@ namespace SPOPT {
         for (auto monomial : objectiveFunction.monomials) {
             b(termToInteger[monomial.first]) = monomial.second;
         }
+
+        originalBNorm = b.norm();
     }
 
     void ProblemData::_ConstructMatrixA()
@@ -610,6 +617,8 @@ namespace SPOPT {
     {
         c.resize(A.cols());
         c.coeffRef(0) = 1;
+
+        originalCNorm = 1;
     }
 
     void ProblemData::_ConstructScalingData()
@@ -687,17 +696,6 @@ namespace SPOPT {
         for (int i = 0; i < A.cols(); i++) {
             E[i] = 1 / E[i];
         }
-
-        /*
-        At = A.transpose();
-        Eigen::SparseMatrix<double> AAtFull = A * At;
-        AAt.compute(AAtFull);
-
-        for (int i = 0; i < rowNumOfA; i++) {
-            AAtFull.coeffRef(i, i) += 1;
-        }
-        IAAt.compute(AAtFull);
-        */
         
         // calculate mean of row / col norms of A
         std::vector<double> rowNorms(A.rows(), 0), colNorms(A.cols(), 0);
@@ -718,7 +716,7 @@ namespace SPOPT {
             colNormMean += sqrt(colNorms[i]) / A.cols();
         }
 
-        // scale f
+        // scale b
         for (int i = 0; i < A.rows(); i++) {
             b(i) *= D[i];
         }

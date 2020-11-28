@@ -8,6 +8,7 @@
 
 namespace SPOPT {
 
+    class Solver;
     class Polynomial;
 
     // stores the information of the POP problem :
@@ -33,6 +34,11 @@ namespace SPOPT {
 
             void ConstructSDP();
             void ShowConstraints();
+
+            // returns whether the problem is unconstrained problem (i.e. K = \mathbb{R}^n) or not.
+            bool IsUnconstrained() const;
+            
+            friend Solver;
 
         private:
             /* Data to be loaded from the function `LoadConfig`. */
@@ -66,11 +72,15 @@ namespace SPOPT {
             Eigen::SparseVector<double> c;
             Eigen::VectorXd b;
 
+            double originalBNorm, originalCNorm;
+
             // Scaling data used for boosting ADMM
             // calculated in function `ConstructSDP` when the option `enableScaling` is set to `true`.
             Eigen::VectorXd D, E;       // Scaling matrix
             double primalScaler;
             double dualScaler;
+
+            std::vector<int> psdMatrixSizes, symmetricMatrixSizes; 
 
             /* Private Member Functions */
 
@@ -89,9 +99,6 @@ namespace SPOPT {
             void _ConstructVectorB();
             void _ConstructMatrixA();
             void _ConstructVectorC();
-
-            std::vector<int> psdMatrixSizes, symmetricMatrixSizes; 
-
             void _ConstructScalingData();
             
             // stores elimination ordering of the member of the `convertedJunctionTree`.
