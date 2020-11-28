@@ -414,7 +414,6 @@ namespace SPOPT {
         }
     }
 
-
     void ProblemData::_ConstructTermMap()
     {
         convertedTermSets.resize(convertedIndexSets.size());
@@ -512,7 +511,7 @@ namespace SPOPT {
             int freeDeg = hierarchyDegree - (polyDeg + 1) / 2;
             colNumOfA += C[sz + freeDeg][freeDeg] * C[sz + freeDeg][freeDeg];
 
-            if (i < convertedEqualityConstraints.size()) {
+            if (i < convertedInequalityConstraints.size()) {
                 psdMatrixSizes.emplace_back(C[sz + freeDeg][freeDeg]);
             }
             else {
@@ -544,13 +543,6 @@ namespace SPOPT {
                         }
                     }
                     int id = termToInteger[merged];
-                    if (termToInteger.find(merged) == termToInteger.end()) {
-                            std::cout << "OMG!!" << std::endl;
-                            for (auto elem : merged) {
-                                std::cout << elem << " ";
-                            }
-                            std::cout << std::endl;
-                        }
                     tripletList.emplace_back(id, leftmostPosition, 1);
                     leftmostPosition++;
                 }
@@ -593,14 +585,6 @@ namespace SPOPT {
                             }
                         }
 
-                        if (termToInteger.find(merged) == termToInteger.end()) {
-                            std::cout << "OMG!!" << std::endl;
-                            for (auto elem : merged) {
-                                std::cout << elem << " ";
-                            }
-                            std::cout << std::endl;
-                        }
-
                         int id = termToInteger[merged];
                         tripletList.emplace_back(id, leftmostPosition, coef);
                     }
@@ -609,8 +593,6 @@ namespace SPOPT {
             }
         }
         A.setFromTriplets(tripletList.begin(), tripletList.end());
-        //At = A.transpose();
-        //AAt.compute(A * At);
     }
 
     void ProblemData::_ConstructVectorC()
@@ -628,107 +610,126 @@ namespace SPOPT {
 
         std::fill(D.begin(), D.end(), 1);
         std::fill(E.begin(), E.end(), 1);
-        
-        std::vector<double> Dt(A.rows()), Et(A.cols());
 
-        const int iterationNum = 10;
-        const double scalingMin = 1e-4;
-        const double scalingMax = 1e+4;
-        
-        for (int repeat = 0; repeat < iterationNum; repeat++) {
-            std::fill(Dt.begin(), Dt.end(), 0);
-            std::fill(Et.begin(), Et.end(), 0);
+        if (enableScaling) {
+            
+            std::vector<double> Dt(A.rows()), Et(A.cols());
 
-            // calculate row norms and col norms
-            for (int i = 0; i < A.outerSize(); i++) {
-                for (Eigen::SparseMatrix<double>::InnerIterator it(A, i); it; ++it) {
-                    Dt[it.row()] = std::max(Dt[it.row()], std::abs(it.value()));
-                    Et[it.col()] = std::max(Et[it.col()], std::abs(it.value()));
+            const int iterationNum = 10;
+            const double scalingMin = 1e-4;
+            const double scalingMax = 1e+4;
+            
+            for (int repeat = 0; repeat < iterationNum; repeat++) {
+                std::fill(Dt.begin(), Dt.end(), 0);
+                std::fill(Et.begin(), Et.end(), 0);
+
+                // calculate row norms and col norms
+                for (int i = 0; i < A.outerSize(); i++) {
+                    for (Eigen::SparseMatrix<double>::InnerIterator it(A, i); it; ++it) {
+                        //Dt[it.row()] = std::max(Dt[it.row()], std::abs(it.value()));
+                        //Et[it.col()] = std::max(Et[it.col()], std::abs(it.value()));
+                        Dt[it.row()] += it.value() * it.value();
+                        Et[it.col()] += it.value() * it.value();
+                    }
+                }
+
+                // mean of E across each cone
+                int leftmostPosition = 1;
+                for (auto matSize : psdMatrixSizes) {
+                    double sum = 0;
+                    for (int i = 0; i < matSize * matSize; i++) {
+                        sum += Et[leftmostPosition + i];
+                    }
+                    sum /= (matSize * matSize);
+
+                    for (int i = 0; i < matSize * matSize; i++) {
+                        Et[leftmostPosition + i] = sum;
+                    }
+
+                    leftmostPosition += matSize * matSize;
+                }
+
+                for (int i = 0; i < A.cols(); i++) {
+                    Et[i] = Et[i] * A.cols() / A.rows();
+                }
+
+                for (int i = 0; i < A.cols(); i++) {
+                    Et[i] = std::clamp(sqrt(sqrt(Et[i])), scalingMin / 10, scalingMax);
+                    if (Et[i] < scalingMin) Et[i] = 1.0;
+                }
+
+                for (int i = 0; i < A.rows(); i++) {
+                    Dt[i] = std::clamp(sqrt(sqrt(Dt[i])), scalingMin / 10, scalingMax);
+                    if (Dt[i] < scalingMin) Dt[i] = 1.0;
+                }
+
+                // scale the rows and cols with Dt and Et
+                for (int i = 0; i < A.outerSize(); i++) {
+                    for (Eigen::SparseMatrix<double>::InnerIterator it(A, i); it; ++it) {
+                        it.valueRef() /= (Dt[it.row()] * Et[it.col()]);
+                    }
+                }
+
+                // Accumulate scaling
+                for (int i = 0; i < A.rows(); i++) {
+                    D[i] *= Dt[i];
+                }
+                for (int i = 0; i < A.cols(); i++) {
+                    E[i] *= Et[i];
                 }
             }
 
             for (int i = 0; i < A.rows(); i++) {
-                Dt[i] = std::clamp(sqrt(Dt[i]), scalingMin / 10, scalingMax);
-                if (Dt[i] < scalingMin) Dt[i] = 1.0;
+                D[i] = 1 / D[i];
             }
 
             for (int i = 0; i < A.cols(); i++) {
-                Et[i] = std::clamp(sqrt(Et[i]), scalingMin / 10, scalingMax);
-                if (Et[i] < scalingMin) Et[i] = 1.0;
+                E[i] = 1 / E[i];
             }
-
-            // mean of E across each cone
-            int leftmostPosition = 1;
-            for (auto matSize : psdMatrixSizes) {
-                double sum = 0;
-                for (int i = 0; i < matSize * matSize; i++) {
-                    sum += Et[leftmostPosition + i];
-                }
-                sum /= (matSize * matSize);
-
-                for (int i = 0; i < matSize * matSize; i++) {
-                    Et[leftmostPosition + i] = sum;
-                }
-
-                leftmostPosition += matSize * matSize;
-            }
-
-            // scale the rows and cols with Dt and Et
-            for (int i = 0; i < A.outerSize(); i++) {
-                for (Eigen::SparseMatrix<double>::InnerIterator it(A, i); it; ++it) {
-                    it.valueRef() /= (Dt[it.row()] * Et[it.col()]);
-                }
-            }
-
-            // Accumulate scaling
-            for (int i = 0; i < A.rows(); i++) {
-                D[i] *= Dt[i];
-            }
-            for (int i = 0; i < A.cols(); i++) {
-                E[i] *= Et[i];
-            }
-        }
-
-        for (int i = 0; i < A.rows(); i++) {
-            D[i] = 1 / D[i];
-        }
-
-        for (int i = 0; i < A.cols(); i++) {
-            E[i] = 1 / E[i];
         }
         
-        // calculate mean of row / col norms of A
-        std::vector<double> rowNorms(A.rows(), 0), colNorms(A.cols(), 0);
-        for (int i = 0; i < A.outerSize(); i++) {
-            for (Eigen::SparseMatrix<double>::InnerIterator it(A, i); it; ++it) {
-                rowNorms[it.row()] += it.value() * it.value();
-                colNorms[it.col()] += it.value() * it.value();
+        primalScaler = 1;
+        dualScaler = 1;
+
+        if (enableScaling) {
+            // calculate mean of row / col norms of A
+            std::vector<double> rowNorms(A.rows(), 0), colNorms(A.cols(), 0);
+            std::vector<double> rowInfNorms(A.rows(), 0), colInfNorms(A.cols(), 0);
+            for (int i = 0; i < A.outerSize(); i++) {
+                for (Eigen::SparseMatrix<double>::InnerIterator it(A, i); it; ++it) {
+                    rowNorms[it.row()] += it.value() * it.value();
+                    rowInfNorms[it.row()] = std::max(rowInfNorms[it.row()], abs(it.value()));
+                    colNorms[it.col()] += it.value() * it.value();
+                    colInfNorms[it.col()] = std::max(colInfNorms[it.col()], abs(it.value()));
+                }
             }
-        }
 
-        double rowNormMean = 0, colNormMean = 0;
+            double rowNormMean = 0, colNormMean = 0;
 
-        for (int i = 0; i < A.rows(); i++) {
-            rowNormMean += sqrt(rowNorms[i]) / A.rows();
-        }
+            for (int i = 0; i < A.rows(); i++) {
+                rowNormMean += sqrt(rowNorms[i]) / A.rows();
+                //rowNormMean += rowInfNorms[i] / A.rows();
+            }
 
-        for (int i = 0; i < A.cols(); i++) {
-            colNormMean += sqrt(colNorms[i]) / A.cols();
-        }
+            for (int i = 0; i < A.cols(); i++) {
+                colNormMean += sqrt(colNorms[i]) / A.cols();
+                //colNormMean += colInfNorms[i] / A.cols();
+            }
 
-        // scale b
-        for (int i = 0; i < A.rows(); i++) {
-            b(i) *= D[i];
-        }
-        dualScaler = colNormMean / std::max(b.norm(), 1e-6);
-        for (int i = 0; i < A.rows(); i++) {
-            b(i) *= dualScaler;
-        }
+            // scale b
+            for (int i = 0; i < A.rows(); i++) {
+                b(i) *= D[i];
+            }
+            dualScaler = colNormMean / std::max(b.norm(), 1e-6);
+            for (int i = 0; i < A.rows(); i++) {
+                b(i) *= dualScaler;
+            }
 
-        // scale c
-        c *= E[0];
-        primalScaler = rowNormMean / std::max(c.norm(), 1e-6);
-        c *= primalScaler;
+            // scale c
+            c *= E[0];
+            primalScaler = rowNormMean / std::max(c.norm(), 1e-6);
+            c *= primalScaler;
+        }
     }
 
     void ProblemData::ShowConstraints()
