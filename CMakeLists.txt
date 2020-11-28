@@ -17,6 +17,10 @@ add_library(dual_lagrangian_solver STATIC ./src/DualLagrangianSolver.cpp)
 target_include_directories(dual_lagrangian_solver PUBLIC ./include ./ext/include)
 target_link_libraries(dual_lagrangian_solver solver libyaml-cpp.a)
 
+add_library(hsde_solver STATIC ./src/HSDESolver.cpp)
+target_include_directories(hsde_solver PUBLIC ./include ./ext/include)
+target_link_libraries(hsde_solver solver libyaml-cpp.a)
+
 add_executable(SPOPT ./src/SPOPT.cpp)
 target_include_directories(SPOPT PRIVATE ./include ./ext/include)
-target_link_libraries(SPOPT problem_data dual_lagrangian_solver solver libyaml-cpp.a libboost_program_options-mt.a)
+target_link_libraries(SPOPT problem_data hsde_solver dual_lagrangian_solver solver libyaml-cpp.a libboost_program_options-mt.a)
