@@ -37,8 +37,8 @@ namespace SPOPT {
 
             double GetPrimalInfeasibility(const ProblemData &problemData, const Eigen::VectorXd &v);
             double GetDualInfeasibility(const ProblemData &problemData, const Eigen::VectorXd &v);
-            double GetPrimalObjValue(const ProblemData &problemData, const Eigen::VectorXd &v) = 0;
-            double GetDualObjValue(const ProblemData &problemData, const Eigen::VectorXd &v) = 0;
+            double GetPrimalObjValue(const ProblemData &problemData, const Eigen::VectorXd &v);
+            double GetDualObjValue(const ProblemData &problemData, const Eigen::VectorXd &v);
             double GetGap(const ProblemData &problemData, const Eigen::VectorXd &v);
 
             DualLagrangianParameter dualParam;
