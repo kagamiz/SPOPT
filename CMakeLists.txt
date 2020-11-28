@@ -9,6 +9,14 @@ add_library(problem_data STATIC ./src/ProblemData.cpp)
 target_include_directories(problem_data PUBLIC ./include ./ext/include/)
 target_link_libraries(problem_data libyaml-cpp.a)
 
+add_library(solver STATIC ./src/Solver.cpp)
+target_include_directories(solver PUBLIC ./include ./ext/include/)
+target_link_libraries(solver libyaml-cpp.a)
+
+add_library(dual_lagrangian_solver STATIC ./src/DualLagrangianSolver.cpp)
+target_include_directories(dual_lagrangian_solver PUBLIC ./include ./ext/include)
+target_link_libraries(dual_lagrangian_solver solver libyaml-cpp.a)
+
 add_executable(SPOPT ./src/SPOPT.cpp)
 target_include_directories(SPOPT PRIVATE ./include ./ext/include)
-target_link_libraries(SPOPT problem_data)
+target_link_libraries(SPOPT problem_data dual_lagrangian_solver solver libyaml-cpp.a libboost_program_options-mt.a)
