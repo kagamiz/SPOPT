@@ -19,25 +19,35 @@ namespace SPOPT {
         Eigen::VectorXd v_i = ConstructInitialPoint(problemData);
 
         if (basicParam.reportFrequency > 0) {
-            std::cout << "Ite No.  PFEAS   DFEAS    GAP         PVAL            DVAL     " << std::endl;
-            std::cout << "===============================================================" << std::endl;
+            std::cout << "Ite No.   PFEAS    DFEAS     GAP         PVAL             DVAL      " << std::endl;
+            std::cout << "====================================================================" << std::endl;
         }
 
         while (!IsTerminationCriterionSatisfied(problemData, v_i)) {
             if (basicParam.reportFrequency > 0 && iterationCounter % basicParam.reportFrequency == 0) {
                 std::cout << std::setw(7)  << iterationCounter << " "
-                          << std::setw(7)  << std::scientific << GetPrimalInfeasibility(problemData, v_i) << " "
-                          << std::setw(7)  << std::scientific << GetDualInfeasibility(problemData, v_i)   << " "
-                          << std::setw(7)  << std::scientific << GetGap(problemData, v_i)                 << " "
-                          << std::setw(15) << std::scientific << GetPrimalObjValue(problemData, v_i)      << " "
-                          << std::setw(15) << std::scientific << GetDualObjValue(problemData, v_i)
+                          << std::setw(7)  << std::setprecision(2)  << std::scientific << GetPrimalInfeasibility(problemData, v_i) << " "
+                          << std::setw(7)  << std::setprecision(2)  << std::scientific << GetDualInfeasibility(problemData, v_i)   << " "
+                          << std::setw(7)  << std::setprecision(2)  << std::scientific << GetGap(problemData, v_i)                 << " "
+                          << std::setw(15) << std::setprecision(10) << std::scientific << GetPrimalObjValue(problemData, v_i)      << " "
+                          << std::setw(15) << std::setprecision(10) << std::scientific << GetDualObjValue(problemData, v_i)
                           << std::endl;
-                std::cout << std::resetiosflags;
+                std::cout << std::resetiosflags(std::ios_base::floatfield);
             }
             iterationCounter++;
             v_i = ApplyFixedPointFunction(problemData, v_i);
             UpdateParameter(problemData, v_i);
         }
+        std::cout << std::setw(7)  << iterationCounter << " "
+                  << std::setw(7)  << std::setprecision(2)  << std::scientific << GetPrimalInfeasibility(problemData, v_i) << " "
+                  << std::setw(7)  << std::setprecision(2)  << std::scientific << GetDualInfeasibility(problemData, v_i)   << " "
+                  << std::setw(7)  << std::setprecision(2)  << std::scientific << GetGap(problemData, v_i)                 << " "
+                  << std::setw(15) << std::setprecision(10) << std::scientific << GetPrimalObjValue(problemData, v_i)      << " "
+                  << std::setw(15) << std::setprecision(10) << std::scientific << GetDualObjValue(problemData, v_i)
+                  << std::endl;
+        std::cout << std::resetiosflags(std::ios_base::floatfield);
+
+        std::cout << "Solver terminated on iteration #" << iterationCounter << "!!" << std::endl;
     }
 
     bool Solver::IsTerminationCriterionSatisfied(const ProblemData &problemData, const Eigen::VectorXd &v)
