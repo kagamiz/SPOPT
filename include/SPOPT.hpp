@@ -4,6 +4,6 @@
 #include "StandardLibraries.hpp"
 #include "Polynomial.hpp"
 #include "ProblemData.hpp"
-#include "Solver.hpp"
+#include "DualLagrangianSolver.hpp"
 
 #endif //__SPOPT_HPP__
