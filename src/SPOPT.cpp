@@ -28,8 +28,11 @@ int main(int argc, char **argv)
     SPOPT::ProblemData problemData(problemDataConfigFileName);
 
     YAML::Node solverConfig = YAML::LoadFile(solverConfigFileName);
+
     std::map<std::string, SPOPT::Solver *> solvers;
     solvers["DualLagrangianSolver"] = new SPOPT::DualLagrangianSolver();
+    solvers["HSDESolver"] = new SPOPT::HSDESolver();
+
     auto solverData = std::move(solvers[solverConfig["solverType"].as<std::string>()]);
     solverData->LoadConfig(solverConfigFileName);
 
