@@ -1,0 +1,5 @@
+solverType : DualLagrangianSolver
+primalTolerance : 1e-6
+dualTolerance : 1e-6
+gapTolerance : 1e-6
+reportFrequency : 100
