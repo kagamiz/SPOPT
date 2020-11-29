@@ -16,16 +16,19 @@ where K is a semi-algebraic set, by using Lasserre Hierarchy [1].
 
 ---
 
-### Requirements and dependencies
+### Requirements and Dependencies
 
 SPOPT uses [CMake](http://www.cmake.org) to build the entire package. Please download and install [CMake](http://www.cmake.org).
 
-Also, following C++ libraries are used in the source code. Please install them, and place the header file (or, its symbolic link) to `ext/include/` and the static library files to `ext/lib/`.
+Also, following C++ libraries are used in the source code. Please install them, and place the header file (or, its symbolic link) to `ext/include/` and the static library files to `ext/lib/` (or any other place where your C++ compilier can recognize).
 
 - [Eigen](http://eigen.tuxfamily.org/)
 - [yaml-cpp (ver 0.6.3)](https://github.com/jbeder/yaml-cpp)
 - [Boost (ver 1.74.0)](https://www.boost.org/)
     - SPOPT only uses `boost::program_options`.
+- [AA](https://github.com/cvxgrp/aa)
+- BLAS
+- LAPACK
 
 ---
 

@@ -1,4 +1,5 @@
 solverType : DualLagrangianSolver
+enableAndersonAcceleration : true
 primalTolerance : 1e-6
 dualTolerance : 1e-6
 gapTolerance : 1e-6

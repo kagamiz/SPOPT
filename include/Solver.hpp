@@ -6,12 +6,18 @@
 #include "LinearAlgebra.hpp"
 #include "StandardLibraries.hpp"
 #include "ProblemData.hpp"
+#include "aa.h"
+#include "aa_blas.h"
 
 namespace SPOPT {
 
     class Parameter {
         public:
             bool enableAndersonAcceleration;
+            bool AAType;
+            int AAMemoryLength;
+            double AAEta;
+
             double primalTolerance;
             double dualTolerance;
             double gapTolerance;
@@ -29,6 +35,9 @@ namespace SPOPT {
         
         protected:
             bool IsTerminationCriterionSatisfied(const ProblemData &problemData, const Eigen::VectorXd &v);
+
+            void ShowHeader();
+            void ShowIterInfo(int iterID, const ProblemData &problemData, Eigen::VectorXd &v);
 
             virtual void SetUpFrom(const ProblemData &problemData) = 0;
             virtual Eigen::VectorXd ConstructInitialPoint(const ProblemData &problemData) = 0;

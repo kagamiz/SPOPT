@@ -11,7 +11,7 @@ target_link_libraries(problem_data libyaml-cpp.a)
 
 add_library(solver STATIC ./src/Solver.cpp)
 target_include_directories(solver PUBLIC ./include ./ext/include/)
-target_link_libraries(solver libyaml-cpp.a)
+target_link_libraries(solver libyaml-cpp.a libaa.a blas lapack)
 
 add_library(dual_lagrangian_solver STATIC ./src/DualLagrangianSolver.cpp)
 target_include_directories(dual_lagrangian_solver PUBLIC ./include ./ext/include)
