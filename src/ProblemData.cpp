@@ -33,7 +33,7 @@ namespace SPOPT {
 
         if (problemDataConfig["indexSetsFile"]) {
             std::ifstream ifs;
-            ifs.open(problemDataConfig.as<std::string>("examples/index_sets.txt"));
+            ifs.open(problemDataConfig["indexSetsFile"].as<std::string>("examples/index_sets.txt"));
 
             int groupNum;
             ifs >> groupNum;
