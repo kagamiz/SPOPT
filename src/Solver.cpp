@@ -39,9 +39,13 @@ namespace SPOPT {
         int iterationCounter = 0;
         Eigen::VectorXd v_i = ConstructInitialPoint(problemData);
 
+        Eigen::VectorXd v_prv;
         AaWork *aawork;
+        double *aacur, *aaprv;
         if (basicParam.enableAndersonAcceleration) {
             aawork = aa_init(v_i.size(), basicParam.AAMemoryLength, basicParam.AAType, basicParam.AAEta);
+            aacur = (double *)malloc(v_i.size() * sizeof(double));
+            aaprv = (double *)malloc(v_i.size() * sizeof(double));
         }
 
         if (basicParam.reportFrequency > 0) {
@@ -52,18 +56,16 @@ namespace SPOPT {
                 ShowIterInfo(iterationCounter, problemData, v_i);
             }
             iterationCounter++;
-            Eigen::VectorXd v_prv;
             if (basicParam.enableAndersonAcceleration) {
                 v_prv = v_i;
             }
             v_i = ApplyFixedPointFunction(problemData, v_i);
             if (basicParam.enableAndersonAcceleration) {
-                double cur[v_i.size()], prv[v_i.size()];
-                Eigen::VectorXd::Map(cur, v_i.rows()) = v_i;
-                Eigen::VectorXd::Map(prv, v_prv.rows()) = v_prv;
-                aa_apply(cur, prv, aawork);
+                Eigen::VectorXd::Map(aacur, v_i.rows()) = v_i;
+                Eigen::VectorXd::Map(aaprv, v_prv.rows()) = v_prv;
+                aa_apply(aacur, aaprv, aawork);
                 for (int i = 0; i < v_i.size(); i++) {
-                    v_i(i) = cur[i];
+                    v_i(i) = aacur[i];
                 }
             }
             UpdateParameter(problemData, v_i);
@@ -71,6 +73,12 @@ namespace SPOPT {
         ShowIterInfo(iterationCounter, problemData, v_i);
 
         std::cout << "Solver terminated on iteration #" << iterationCounter << "!!" << std::endl;
+
+        if (basicParam.enableAndersonAcceleration) {
+            aa_finish(aawork);
+            free(aacur);
+            free(aaprv);
+        }
     }
 
     bool Solver::IsTerminationCriterionSatisfied(const ProblemData &problemData, const Eigen::VectorXd &v)
