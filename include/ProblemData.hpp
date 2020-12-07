@@ -34,6 +34,7 @@ namespace SPOPT {
 
             void ConstructSDP();
             void ShowConstraints();
+            void ShowAsJuliaForm();
 
             // returns whether the problem is unconstrained problem (i.e. K = \mathbb{R}^n) or not.
             bool IsUnconstrained() const;

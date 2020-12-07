@@ -60,7 +60,7 @@ namespace SPOPT {
                 return Monomial(t, this->coefficient * ct, /* sorted = */true);
             }
 
-            std::string ToString(bool withSign = true) {
+            std::string ToString(bool oneIndexed = false, bool withSign = true) {
                 std::ostringstream oss;
                 if (withSign) {
                     oss << std::showpos << coefficient;
@@ -75,7 +75,7 @@ namespace SPOPT {
                     for (j = i + 1; j < term.size() && term[i] == term[j]; j++) {
                         cnt++;
                     }
-                    oss << "*x[" << term[i] << "]";
+                    oss << "*x[" << term[i] + oneIndexed << "]";
                     if (cnt >= 2) {
                         oss << "^" << cnt;
                     }
@@ -224,11 +224,11 @@ namespace SPOPT {
                 return ret;
             }
 
-            std::string ToString() {
+            std::string ToString(bool oneIndexed = false) {
                 std::string res;
                 int outputNum = 0;
                 for (auto monomial : monomials) {
-                    res += Monomial(monomial.first, monomial.second).ToString(/* withSign = */outputNum != 0);
+                    res += Monomial(monomial.first, monomial.second).ToString(/* oneIndexed = */oneIndexed, /* withSign = */outputNum != 0);
                     outputNum++;
                 }
                 return outputNum == 0 ? "0" : res;

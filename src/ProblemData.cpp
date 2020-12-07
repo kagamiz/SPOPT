@@ -742,4 +742,32 @@ namespace SPOPT {
             std::cout << ineqConstraint.ToString() << " >= 0" << std::endl;
         }
     }
+
+    void ProblemData::ShowAsJuliaForm()
+    {
+        std::cout << "using TSSOS" << std::endl;
+        std::cout << "using DynamicPolynomials" << std::endl;
+        std::cout << "using SparseArrays" << std::endl;
+        std::cout << "using MultivariatePolynomials" << std::endl;
+
+        int maxIndex = objectiveFunction.maxIndex;
+        for (auto convertedEqualityConstraint : convertedEqualityConstraints) {
+            maxIndex = std::max(maxIndex, convertedEqualityConstraint.maxIndex);
+        }
+        for (auto convertedInequalityConstraint : convertedInequalityConstraints) {
+            maxIndex = std::max(maxIndex, convertedInequalityConstraint.maxIndex);
+        }
+
+        std::cout << "@polyvar x[1:" << maxIndex + 1 << "]" << std::endl;
+        std::cout << "f=" << objectiveFunction.ToString(/* oneIndexed = */true) << std::endl;
+        std::cout << "pop=[f]" << std::endl;
+        for (auto convertedEqualityConstraint : convertedEqualityConstraints) {
+            std::cout << "push!(pop, " << convertedEqualityConstraint.ToString(/* oneIndexed = */true) << ")" << std::endl;
+        }
+        for (auto convertedInequalityConstraint : convertedInequalityConstraints) {
+            std::cout << "push!(pop, " << convertedInequalityConstraint.ToString(/* oneIndexed = */true) << ")" << std::endl;
+        }
+        std::cout << "order=" << hierarchyDegree << std::endl;
+        std::cout << "opt,sol,data=cs_tssos_first(pop,x,order,numeq=" << convertedEqualityConstraints.size() << ",TS=\"MD\",MomentOne=true,solution=true)" << std::endl;
+    }
 }
