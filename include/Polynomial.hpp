@@ -95,6 +95,7 @@ namespace SPOPT {
             Polynomial(Monomial m) {
                 monomials[m.term] = m.coefficient;
                 degree = m.degree;
+                maxIndex = -1;
                 if (m.term.size()) {
                     maxIndex = *max_element(m.term.begin(), m.term.end());
                 }
