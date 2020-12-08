@@ -55,6 +55,7 @@ namespace SPOPT {
             // Options
             bool enableScaling;
             bool enableGradientConstraint;
+            double variableInfNormBound;
 
             /* Other data to be constructed from the function `ConstructSDP` */
 

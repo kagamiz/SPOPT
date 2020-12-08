@@ -14,6 +14,7 @@ namespace SPOPT {
 
         enableScaling            = problemDataConfig["enableScaling"].as<bool>(true);
         enableGradientConstraint = problemDataConfig["enableGradientConstraint"].as<bool>(false);
+        variableInfNormBound     = problemDataConfig["variableInfNormBound"].as<double>(1.0);
 
         objectiveFunction.LoadFromFile(problemDataConfig["objectiveFunctionFile"].as<std::string>("examples/affine.txt"));
 
@@ -193,6 +194,16 @@ namespace SPOPT {
 
         int newIndexSetID = convertedIndexSets.size();
 
+        // norm bound constraint for the original variables
+        {
+            Polynomial p = Monomial(variableInfNormBound * variableInfNormBound * originalIndexSets[v].size());
+            for (auto elem : originalIndexSets[v]) {
+                p += Monomial({elem, elem}, -1, /* sorted = */true);
+            }
+            convertedInequalityConstraints.emplace_back(p);
+            groupIDOfConvertedInequalityConstraints.emplace_back(newIndexSetID);
+        }
+
         if (p == -1) {
             for (int i = 0; i < constraintIDs.size(); i++) {
                 Term t = {constraintIDs[i][v]};
@@ -237,24 +248,42 @@ namespace SPOPT {
             for (int i = 0; i < constraintMonomials.size(); i++) {
                 Term t = {constraintIDs[i][v]};
                 Polynomial poly(Monomial(t, -1, /* sorted = */true));
-                for (int j = 0; j < constraintMonomials[i][v].size(); j++) {
-                    poly += constraintMonomials[i][v][j];
+//                Polynomial constraintIDNormBound(Monomial({constraintIDs[i][v], constraintIDs[i][v]}, -1, /* sorted = */true));
+
+                double infNormBound = 0;
+                for (auto &monomial : constraintMonomials[i][v]) {
+                    poly += monomial;
+//                    infNormBound += std::abs(monomial.coefficient) * std::pow(variableInfNormBound, monomial.term.size());
                 }
                 convertedEqualityConstraints.emplace_back(poly);
                 groupIDOfConvertedEqualityConstraints.emplace_back(newIndexSetID);
+/*
+                constraintIDNormBound += Monomial(infNormBound * infNormBound);
+                convertedInequalityConstraints.emplace_back(constraintIDNormBound);
+                groupIDOfConvertedInequalityConstraints.emplace_back(newIndexSetID);
+*/
             }
 
             if (enableGradientConstraint) {
                 for (int i = 0; i < originalIndexSets[v].size(); i++) {
                     Term t = {objectiveIDs[v][i]};
                     Polynomial poly(Monomial(t, -1, /* sorted = */true));
+  //                  Polynomial objectiveIDNormBound(Monomial({objectiveIDs[v][i], objectiveIDs[v][i]}, -1, /* sorted = */true));
+
+                    double infNormBound = 0;
                     for (int j = 0; j < objectiveMonomials[v].size(); j++) {
                         Monomial dif = objectiveMonomials[v][j].DifferentiateBy(originalIndexSets[v][i]);
                         if (dif.term.size() == 0 && std::abs(dif.coefficient) <= EPS) continue;
                         poly += dif;
+//                        infNormBound += std::abs(dif.coefficient) * std::pow(variableInfNormBound, dif.term.size());
                     }
                     convertedEqualityConstraints.emplace_back(poly);
                     groupIDOfConvertedEqualityConstraints.emplace_back(newIndexSetID);
+/*
+                    objectiveIDNormBound += Monomial(infNormBound * infNormBound);
+                    convertedInequalityConstraints.emplace_back(objectiveIDNormBound);
+                    groupIDOfConvertedInequalityConstraints.emplace_back(newIndexSetID);
+*/
                 }
             }
         }
@@ -745,6 +774,7 @@ namespace SPOPT {
 
     void ProblemData::ShowAsJuliaForm()
     {
+        std::cout << "using CPUTime" << std::endl;
         std::cout << "using TSSOS" << std::endl;
         std::cout << "using DynamicPolynomials" << std::endl;
         std::cout << "using SparseArrays" << std::endl;
@@ -752,22 +782,25 @@ namespace SPOPT {
 
         int maxIndex = objectiveFunction.maxIndex;
         for (auto convertedEqualityConstraint : convertedEqualityConstraints) {
-            maxIndex = std::max(maxIndex, convertedEqualityConstraint.maxIndex);
+            maxIndex = std::max(maxIndex, (int)convertedEqualityConstraint.maxIndex);
         }
         for (auto convertedInequalityConstraint : convertedInequalityConstraints) {
-            maxIndex = std::max(maxIndex, convertedInequalityConstraint.maxIndex);
+            maxIndex = std::max(maxIndex, (int)convertedInequalityConstraint.maxIndex);
         }
 
         std::cout << "@polyvar x[1:" << maxIndex + 1 << "]" << std::endl;
         std::cout << "f=" << objectiveFunction.ToString(/* oneIndexed = */true) << std::endl;
         std::cout << "pop=[f]" << std::endl;
-        for (auto convertedEqualityConstraint : convertedEqualityConstraints) {
-            std::cout << "push!(pop, " << convertedEqualityConstraint.ToString(/* oneIndexed = */true) << ")" << std::endl;
-        }
+        std::cout << "for i = " << objectiveFunction.maxIndex + 2 << ":" << maxIndex + 1 << std::endl;
+        std::cout << "  push!(pop, 1 - x[i]^2)" << std::endl;
+        std::cout << "end" << std::endl;
         for (auto convertedInequalityConstraint : convertedInequalityConstraints) {
             std::cout << "push!(pop, " << convertedInequalityConstraint.ToString(/* oneIndexed = */true) << ")" << std::endl;
         }
+        for (auto convertedEqualityConstraint : convertedEqualityConstraints) {
+            std::cout << "push!(pop, " << convertedEqualityConstraint.ToString(/* oneIndexed = */true) << ")" << std::endl;
+        }
         std::cout << "order=" << hierarchyDegree << std::endl;
-        std::cout << "opt,sol,data=cs_tssos_first(pop,x,order,numeq=" << convertedEqualityConstraints.size() << ",TS=\"MD\",MomentOne=true,solution=true)" << std::endl;
+        std::cout << "@CPUtime opt,sol,data=cs_tssos_first(pop,x,order,numeq=" << convertedEqualityConstraints.size() << ",TS=\"MD\",MomentOne=true,solution=true)" << std::endl;
     }
 }
