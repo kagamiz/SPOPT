@@ -745,6 +745,7 @@ namespace SPOPT {
 
     void ProblemData::ShowAsJuliaForm()
     {
+        std::cout << "using CPUTime" << std::endl;
         std::cout << "using TSSOS" << std::endl;
         std::cout << "using DynamicPolynomials" << std::endl;
         std::cout << "using SparseArrays" << std::endl;
@@ -752,22 +753,25 @@ namespace SPOPT {
 
         int maxIndex = objectiveFunction.maxIndex;
         for (auto convertedEqualityConstraint : convertedEqualityConstraints) {
-            maxIndex = std::max(maxIndex, convertedEqualityConstraint.maxIndex);
+            maxIndex = std::max(maxIndex, (int)convertedEqualityConstraint.maxIndex);
         }
         for (auto convertedInequalityConstraint : convertedInequalityConstraints) {
-            maxIndex = std::max(maxIndex, convertedInequalityConstraint.maxIndex);
+            maxIndex = std::max(maxIndex, (int)convertedInequalityConstraint.maxIndex);
         }
 
         std::cout << "@polyvar x[1:" << maxIndex + 1 << "]" << std::endl;
         std::cout << "f=" << objectiveFunction.ToString(/* oneIndexed = */true) << std::endl;
         std::cout << "pop=[f]" << std::endl;
-        for (auto convertedEqualityConstraint : convertedEqualityConstraints) {
-            std::cout << "push!(pop, " << convertedEqualityConstraint.ToString(/* oneIndexed = */true) << ")" << std::endl;
-        }
+        std::cout << "for i = " << objectiveFunction.maxIndex + 2 << ":" << maxIndex + 1 << std::endl;
+        std::cout << "  push!(pop, 1 - x[i]^2)" << std::endl;
+        std::cout << "end" << std::endl;
         for (auto convertedInequalityConstraint : convertedInequalityConstraints) {
             std::cout << "push!(pop, " << convertedInequalityConstraint.ToString(/* oneIndexed = */true) << ")" << std::endl;
         }
+        for (auto convertedEqualityConstraint : convertedEqualityConstraints) {
+            std::cout << "push!(pop, " << convertedEqualityConstraint.ToString(/* oneIndexed = */true) << ")" << std::endl;
+        }
         std::cout << "order=" << hierarchyDegree << std::endl;
-        std::cout << "opt,sol,data=cs_tssos_first(pop,x,order,numeq=" << convertedEqualityConstraints.size() << ",TS=\"MD\",MomentOne=true,solution=true)" << std::endl;
+        std::cout << "@CPUtime opt,sol,data=cs_tssos_first(pop,x,order,numeq=" << convertedEqualityConstraints.size() << ",TS=false,MomentOne=true,solution=true)" << std::endl;
     }
 }
