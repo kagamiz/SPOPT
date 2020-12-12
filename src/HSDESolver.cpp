@@ -30,7 +30,7 @@ namespace SPOPT {
         }
 
         zeta = Eigen::VectorXd::Zero(MatrixA(problemData).cols() + MatrixA(problemData).rows());
-        zeta(0) = -VectorC(problemData).coeff(0);
+        zeta.head(MatrixA(problemData).cols()) = -VectorC(problemData);
         zeta.tail(MatrixA(problemData).rows()) = VectorB(problemData);
         MInvZeta = CalcMInv(problemData, zeta);
         zetaDotMInvZeta = zeta.dot(MInvZeta);
@@ -87,7 +87,13 @@ namespace SPOPT {
         uHat = hsdeParam.alpha * uHat + (1 - hsdeParam.alpha) * curU;
 
         Eigen::VectorXd newU = uHat - curV;
-        int leftmostPosition = 1;
+        if (enableLowerBound(problemData)) {
+            newU(0) = std::max(newU(0), 0.0);
+        }
+        if (enableUpperBound(problemData)) {
+            newU(enableLowerBound(problemData)) = std::max(newU(enableLowerBound(problemData)), 0.0);
+        }
+        int leftmostPosition = 1 + enableLowerBound(problemData) + enableUpperBound(problemData);
         for (auto psdMatrixSize : psdMatrixSizes(problemData)) {
             Eigen::MatrixXd tmpMatrix(psdMatrixSize, psdMatrixSize);
 

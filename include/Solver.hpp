@@ -50,6 +50,9 @@ namespace SPOPT {
             virtual double GetDualObjValue(const ProblemData &problemData, const Eigen::VectorXd &v) = 0;
             virtual double GetGap(const ProblemData &problemData, const Eigen::VectorXd &v) = 0;
 
+            inline const bool enableLowerBound(const ProblemData &problemData) { return problemData.enableLowerBound; }
+            inline const bool enableUpperBound(const ProblemData &problemData) { return problemData.enableUpperBound; }
+
             inline const Eigen::SparseMatrix<double> &MatrixA(const ProblemData &problemData) { return problemData.A; }
 
             inline const Eigen::VectorXd &VectorB(const ProblemData &problemData) { return problemData.b; }
