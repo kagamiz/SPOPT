@@ -87,13 +87,8 @@ namespace SPOPT {
         uHat = hsdeParam.alpha * uHat + (1 - hsdeParam.alpha) * curU;
 
         Eigen::VectorXd newU = uHat - curV;
-        if (enableLowerBound(problemData)) {
-            newU(0) = std::max(newU(0), 0.0);
-        }
-        if (enableUpperBound(problemData)) {
-            newU(enableLowerBound(problemData)) = std::max(newU(enableLowerBound(problemData)), 0.0);
-        }
-        int leftmostPosition = 1 + enableLowerBound(problemData) + enableUpperBound(problemData);
+        
+        int leftmostPosition = 1;
         for (auto psdMatrixSize : psdMatrixSizes(problemData)) {
             Eigen::MatrixXd tmpMatrix(psdMatrixSize, psdMatrixSize);
 

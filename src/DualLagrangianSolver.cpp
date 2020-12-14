@@ -40,7 +40,7 @@ namespace SPOPT {
         Eigen::VectorXd y = Eigen::VectorXd::Zero(MatrixA(problemData).rows());
         Eigen::VectorXd z = Eigen::VectorXd::Zero(MatrixA(problemData).cols());
 
-        int leftmostPosition = 1 + enableLowerBound(problemData) + enableUpperBound(problemData);
+        int leftmostPosition = 1;
         for (auto psdMatrixSize : psdMatrixSizes(problemData)) {
             for (int i = 0; i < psdMatrixSize; i++) {
                 x(leftmostPosition + i * psdMatrixSize + i) = 1;
@@ -82,14 +82,7 @@ namespace SPOPT {
         Eigen::VectorXd tmpZ = At * newY - dualParam.mu * curX - VectorC(problemData);
         Eigen::VectorXd newZ = Eigen::VectorXd::Zero(MatrixA(problemData).cols());
 
-        if (enableLowerBound(problemData)) {
-            newZ(0) = std::max(newZ(0), 0.0);
-        }
-        if (enableUpperBound(problemData)) {
-            newZ(enableLowerBound(problemData)) = std::max(newZ(enableLowerBound(problemData)), 0.0);
-        }
-
-        int leftmostPosition = 1 + enableUpperBound(problemData) + enableLowerBound(problemData);
+        int leftmostPosition = 1;
         for (auto psdMatrixSize : psdMatrixSizes(problemData)) {
             Eigen::MatrixXd tmpMatrix(psdMatrixSize, psdMatrixSize);
 

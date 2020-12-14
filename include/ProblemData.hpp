@@ -45,7 +45,8 @@ namespace SPOPT {
             /* Declaration of EnumType */
             enum ConstraintType {
                 EqualityConstraint,
-                InequalityConstraint
+                InequalityConstraint,
+                BoundConstraint
             };
             /* Data to be loaded from the function `LoadConfig`. */
 
@@ -61,8 +62,7 @@ namespace SPOPT {
             bool enableScaling;
             bool enableGradientConstraint;
             bool enableGradientConstraintType2;
-            bool enableLowerBound;
-            bool enableUpperBound;
+            bool enableObjValueBound;
             double lowerBoundConstant;
             double upperBoundConstant;
 
