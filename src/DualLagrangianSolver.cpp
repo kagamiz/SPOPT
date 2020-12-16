@@ -81,6 +81,7 @@ namespace SPOPT {
 
         Eigen::VectorXd tmpZ = At * newY - dualParam.mu * curX - VectorC(problemData);
         Eigen::VectorXd newZ = Eigen::VectorXd::Zero(MatrixA(problemData).cols());
+
         int leftmostPosition = 1;
         for (auto psdMatrixSize : psdMatrixSizes(problemData)) {
             Eigen::MatrixXd tmpMatrix(psdMatrixSize, psdMatrixSize);

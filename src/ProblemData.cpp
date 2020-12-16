@@ -12,8 +12,12 @@ namespace SPOPT {
     {
         YAML::Node problemDataConfig = YAML::LoadFile(fileName);
 
-        enableScaling            = problemDataConfig["enableScaling"].as<bool>(true);
-        enableGradientConstraint = problemDataConfig["enableGradientConstraint"].as<bool>(false);
+        enableScaling                 = problemDataConfig["enableScaling"].as<bool>(true);
+        enableGradientConstraint      = problemDataConfig["enableGradientConstraint"].as<bool>(false);
+        enableGradientConstraintType2 = problemDataConfig["enableGradientConstraintType2"].as<bool>(false);
+        enableObjValueBound           = problemDataConfig["enableObjValueBound"].as<bool>(false);
+        lowerBoundConstant            = problemDataConfig["lowerBoundConstant"].as<double>(0.0);
+        upperBoundConstant            = problemDataConfig["upperBoundConstant"].as<double>(0.0);
 
         objectiveFunction.LoadFromFile(problemDataConfig["objectiveFunctionFile"].as<std::string>("examples/affine.txt"));
 
@@ -63,11 +67,15 @@ namespace SPOPT {
 
     bool ProblemData::IsUnconstrained() const
     {
-        return originalEqualityConstraints.size() == 0 && originalInequalityConstraints.size() == 0 && enableGradientConstraint == false;
+        return    convertedEqualityConstraints.size() == 0 && convertedInequalityConstraints.size() == 0
+               && enableGradientConstraint == false        && enableGradientConstraintType2 == false;
     }
 
     void ProblemData::ConstructSDP()
     {
+        if (enableGradientConstraintType2) {
+            _AddGradientConstraints();
+        }
         _ConstructNewConstraints();
         _ConstructTermMap();
         _ConstructVectorB();
@@ -76,14 +84,62 @@ namespace SPOPT {
         _ConstructScalingData();
     }
 
+    void ProblemData::_AddGradientConstraints()
+    {
+        int variableNum = objectiveFunction.maxIndex + 1;
+        for (int i = 0; i < variableNum; i++) {
+            Polynomial grad_i;
+            for (auto &monomial : objectiveFunction.monomials) {
+                Monomial dif = Monomial(monomial.first, monomial.second, /* sorted = */true).DifferentiateBy(i);
+                if (dif.term.size() == 0 && std::abs(dif.coefficient) <= EPS) continue;
+                grad_i += dif;
+            }
+            originalEqualityConstraints.emplace_back(grad_i);
+        }
+    }
+
     void ProblemData::_ConstructNewConstraints()
     {
-        std::vector<Polynomial> constraints;
-        int eqNum = originalEqualityConstraints.size();
-        int ineqNum = originalInequalityConstraints.size();
+        std::vector<Polynomial>            constraints;
+        std::vector<ConstraintType>        constraintTypes;
+        std::vector<Polynomial>            unpartitionedConstraints;
+        std::vector<ConstraintType>        unpartitionedConstraintTypes;
 
-        constraints.insert(constraints.end(), originalEqualityConstraints.begin(), originalEqualityConstraints.end());
-        constraints.insert(constraints.end(), originalInequalityConstraints.begin(), originalInequalityConstraints.end());
+        std::vector<Polynomial> tmpPolys;
+        tmpPolys.insert(tmpPolys.end(), originalEqualityConstraints.begin(), originalEqualityConstraints.end());
+        tmpPolys.insert(tmpPolys.end(), originalInequalityConstraints.begin(), originalInequalityConstraints.end());
+
+        for (int i = 0; i < tmpPolys.size(); i++) {
+            auto &originalConstraint = tmpPolys[i];
+            std::set<int> variableIndices;
+            for (auto &monomial : originalConstraint.monomials) {
+                for (auto ind : monomial.first) {
+                    variableIndices.insert(ind);
+                }
+            }
+            bool isSubsetOfOriginalSet = false;
+            for (auto &originalIndexSet : originalIndexSets) {
+                std::set<int> indSet(originalIndexSet.begin(), originalIndexSet.end());
+                if (std::includes(indSet.begin(), indSet.end(), variableIndices.begin(), variableIndices.end())) {
+                    isSubsetOfOriginalSet = true;
+                    break;
+                }
+            }
+
+            if (isSubsetOfOriginalSet) {
+                unpartitionedConstraints.emplace_back(originalConstraint);
+                unpartitionedConstraintTypes.emplace_back(i < originalEqualityConstraints.size() ? ConstraintType::EqualityConstraint : ConstraintType::InequalityConstraint);
+            }
+            else {
+                constraints.emplace_back(originalConstraint);
+                constraintTypes.emplace_back(i < originalEqualityConstraints.size() ? ConstraintType::EqualityConstraint : ConstraintType::InequalityConstraint);
+            }
+        }
+
+        if (enableObjValueBound) {
+            constraints.emplace_back(objectiveFunction);
+            constraintTypes.emplace_back(ConstraintType::BoundConstraint);
+        }
 
         int maxDegree = objectiveFunction.degree;
 
@@ -162,7 +218,37 @@ namespace SPOPT {
 
         std::vector<bool> visited(objectiveFunction.maxIndex + 1);
         int variableOrder = 1;
-        _TraverseTree(0, -1, newVariableID, objectiveMonomials, objectiveIDs, constraintMonomials, constraintIDs, visited, variableOrder);
+        _TraverseTree(0, -1, newVariableID, objectiveMonomials, objectiveIDs, constraintMonomials, constraintIDs, constraintTypes, visited, variableOrder);
+
+        for (int i = 0; i < unpartitionedConstraints.size(); i++) {
+            auto &unpartitionedConstraint = unpartitionedConstraints[i];
+            std::set<int> variableIndices;
+            for (auto &monomial : unpartitionedConstraint.monomials) {
+                for (auto ind : monomial.first) {
+                    variableIndices.insert(ind);
+                }
+            }
+            
+            bool foundSet = false;
+            for (int j = 0; j < convertedIndexSets.size(); j++) {
+                std::set<int> indSet(convertedIndexSets[j].begin(), convertedIndexSets[j].end());
+                if (std::includes(indSet.begin(), indSet.end(), variableIndices.begin(), variableIndices.end())) {
+                    foundSet = true;
+                    if (unpartitionedConstraintTypes[i] == ConstraintType::EqualityConstraint) {
+                        convertedEqualityConstraints.emplace_back(unpartitionedConstraint);
+                        groupIDOfConvertedEqualityConstraints.emplace_back(j);
+                    }
+                    else {
+                        convertedInequalityConstraints.emplace_back(unpartitionedConstraint);
+                        groupIDOfConvertedInequalityConstraints.emplace_back(j);
+                    }
+                }
+            }
+            if (!foundSet) {
+                std::cout << "[ERROR] preprocessing of polynomial decomposition failed!!" << std::endl;
+                exit(EXIT_FAILURE);
+            }
+        }
     }
 
     void ProblemData::_TraverseTree(int v, int p, int &newVariableIndex,
@@ -170,6 +256,7 @@ namespace SPOPT {
                                     std::vector<std::vector<int>> &objectiveIDs,
                                     std::vector<std::vector<std::vector<Monomial>>> &constraintMonomials,
                                     std::vector<std::vector<int>> &constraintIDs,
+                                    std::vector<ConstraintType>  &constraintTypes,
                                     std::vector<bool> &visited,
                                     int &variableOrder)
     {
@@ -196,12 +283,19 @@ namespace SPOPT {
         if (p == -1) {
             for (int i = 0; i < constraintIDs.size(); i++) {
                 Term t = {constraintIDs[i][v]};
-                if (i < originalEqualityConstraints.size()) {
+                if (constraintTypes[i] == ConstraintType::EqualityConstraint) {
                     convertedEqualityConstraints.emplace_back(Polynomial(Monomial(t, /* sorted = */true)));
                     groupIDOfConvertedEqualityConstraints.emplace_back(newIndexSetID);
                 }
-                else {
+                else if (constraintTypes[i] == ConstraintType::InequalityConstraint) {
                     convertedInequalityConstraints.emplace_back(Polynomial(Monomial(t, /* sorted = */true)));
+                    groupIDOfConvertedInequalityConstraints.emplace_back(newIndexSetID);
+                }
+                else {
+                    convertedInequalityConstraints.emplace_back(Polynomial(Monomial(t, /* sorted = */true)) - Polynomial(Monomial(lowerBoundConstant)));
+                    groupIDOfConvertedInequalityConstraints.emplace_back(newIndexSetID);
+
+                    convertedInequalityConstraints.emplace_back(Polynomial(Monomial(upperBoundConstant)) - Polynomial(Monomial(t, /* sorted = */true)));
                     groupIDOfConvertedInequalityConstraints.emplace_back(newIndexSetID);
                 }
             }
@@ -381,7 +475,7 @@ namespace SPOPT {
             for (int i = 0; i < originalJunctionTree[v].size(); i++) {
                 int nx = originalJunctionTree[v][i];
                 if (nx == p) continue;
-                _TraverseTree(nx, v, newVariableIndex, objectiveMonomials, objectiveIDs, constraintMonomials, constraintIDs, visited, variableOrder);
+                _TraverseTree(nx, v, newVariableIndex, objectiveMonomials, objectiveIDs, constraintMonomials, constraintIDs, constraintTypes, visited, variableOrder);
             }
         }
 
@@ -460,6 +554,7 @@ namespace SPOPT {
     void ProblemData::_ConstructVectorB()
     {
         b.setZero(termToInteger.size());
+
         for (auto monomial : objectiveFunction.monomials) {
             b(termToInteger[monomial.first]) = monomial.second;
         }
@@ -522,7 +617,8 @@ namespace SPOPT {
         A.resize(rowNumOfA, colNumOfA);
 
         std::vector<Eigen::Triplet<double>> tripletList;
-        tripletList.emplace_back(0, 0, 1);
+
+        tripletList.emplace_back(termToInteger[Term({})], termToInteger[Term({})], 1);
 
         int leftmostPosition = 1;
 
@@ -598,7 +694,7 @@ namespace SPOPT {
     void ProblemData::_ConstructVectorC()
     {
         c.resize(A.cols());
-        c.coeffRef(0) = 1;
+        c.coeffRef(termToInteger[Term({})]) = 1;
 
         originalCNorm = 1;
     }
@@ -726,7 +822,10 @@ namespace SPOPT {
             }
 
             // scale c
-            c *= E[0];
+            for (Eigen::SparseVector<double>::InnerIterator it(c); it; ++it) {
+                it.valueRef() *= E[it.index()];
+            }
+
             primalScaler = rowNormMean / std::max(c.norm(), 1e-6);
             c *= primalScaler;
         }
@@ -743,13 +842,15 @@ namespace SPOPT {
         }
     }
 
-    void ProblemData::ShowAsJuliaForm()
+    void ProblemData::OutputJuliaFile(std::string fileName)
     {
-        std::cout << "using CPUTime" << std::endl;
-        std::cout << "using TSSOS" << std::endl;
-        std::cout << "using DynamicPolynomials" << std::endl;
-        std::cout << "using SparseArrays" << std::endl;
-        std::cout << "using MultivariatePolynomials" << std::endl;
+        std::ostream &os = (fileName == "" ? *(new std::ofstream(fileName)) : std::cout);
+
+        os << "using CPUTime;" << std::endl;
+        os << "using TSSOS;" << std::endl;
+        os << "using DynamicPolynomials;" << std::endl;
+        os << "using SparseArrays;" << std::endl;
+        os << "using MultivariatePolynomials;" << std::endl;
 
         int maxIndex = objectiveFunction.maxIndex;
         for (auto convertedEqualityConstraint : convertedEqualityConstraints) {
@@ -759,19 +860,133 @@ namespace SPOPT {
             maxIndex = std::max(maxIndex, (int)convertedInequalityConstraint.maxIndex);
         }
 
-        std::cout << "@polyvar x[1:" << maxIndex + 1 << "]" << std::endl;
-        std::cout << "f=" << objectiveFunction.ToString(/* oneIndexed = */true) << std::endl;
-        std::cout << "pop=[f]" << std::endl;
-        std::cout << "for i = " << objectiveFunction.maxIndex + 2 << ":" << maxIndex + 1 << std::endl;
-        std::cout << "  push!(pop, 1 - x[i]^2)" << std::endl;
-        std::cout << "end" << std::endl;
+        os << "@polyvar x[1:" << maxIndex + 1 << "];" << std::endl;
+        os << "f=" << objectiveFunction.ToString(/* oneIndexed = */true) << ";" << std::endl;
+        os << "pop=[f];" << std::endl;
         for (auto convertedInequalityConstraint : convertedInequalityConstraints) {
-            std::cout << "push!(pop, " << convertedInequalityConstraint.ToString(/* oneIndexed = */true) << ")" << std::endl;
+            os << "push!(pop, " << convertedInequalityConstraint.ToString(/* oneIndexed = */true) << ");" << std::endl;
         }
         for (auto convertedEqualityConstraint : convertedEqualityConstraints) {
-            std::cout << "push!(pop, " << convertedEqualityConstraint.ToString(/* oneIndexed = */true) << ")" << std::endl;
+            os << "push!(pop, " << convertedEqualityConstraint.ToString(/* oneIndexed = */true) << ");" << std::endl;
         }
-        std::cout << "order=" << hierarchyDegree << std::endl;
-        std::cout << "@CPUtime opt,sol,data=cs_tssos_first(pop,x,order,numeq=" << convertedEqualityConstraints.size() << ",TS=false,MomentOne=true,solution=true)" << std::endl;
+        os << "order=" << hierarchyDegree << ";" << std::endl;
+        os << "@CPUtime opt,sol,data=cs_tssos_first(pop,x,order,numeq=" << convertedEqualityConstraints.size() << ",TS=false,MomentOne=true,solution=true);" << std::endl;
+
+        if (&os != &std::cout) {
+            delete(&os);
+        }
+    }
+
+    void ProblemData::OutputMatFile(std::string fileName)
+    {
+        MATFile *pmat = matOpen(fileName.c_str(), "w");
+        if (pmat == NULL) {
+            std::cerr << "Error creating file " << fileName << std::endl;
+            exit(EXIT_FAILURE);
+        }
+
+        mxArray *matrixA = mxCreateSparse(A.rows(), A.cols(), A.nonZeros(), mxREAL);
+        mwIndex *ir, *jc;
+        double *pr;
+        ir = mxGetIr(matrixA);
+        jc = mxGetJc(matrixA);
+        pr = mxGetDoubles(matrixA);
+
+        std::vector<int> AColPerm(A.cols());
+        AColPerm[0] = 0;
+        int ctr = 1;
+        int IndOffset = 1;
+        int freeConeSize = 1;
+        for (int i = 0; i < psdMatrixSizes.size(); i++) {
+            IndOffset += psdMatrixSizes[i] * psdMatrixSizes[i];
+        }
+        for (int i = 0; i < symmetricMatrixSizes.size(); i++) {
+            int symSize = symmetricMatrixSizes[i] * symmetricMatrixSizes[i];
+            for (int j = 0; j < symSize; j++) {
+                AColPerm[ctr] = IndOffset;
+                IndOffset++; ctr++;
+            }
+            freeConeSize += symSize;
+        }
+        IndOffset = 1;
+        for (int i = 0; i < psdMatrixSizes.size(); i++) {
+            int psdSize = psdMatrixSizes[i] * psdMatrixSizes[i];
+            for (int j = 0; j < psdSize; j++) {
+                AColPerm[ctr] = IndOffset;
+                IndOffset++; ctr++;
+            }
+        }
+
+        int nzCnt = 0;
+        for (int i = 0; i < A.outerSize(); i++) {
+            jc[i] = nzCnt;
+            for (Eigen::SparseMatrix<double>::InnerIterator it(A, AColPerm[i]); it; ++it) {
+                pr[nzCnt] = it.value() / (D[it.row()] * E[it.col()]);
+                ir[nzCnt] = it.row();
+                nzCnt++;
+            }
+        }
+        jc[A.outerSize()] = nzCnt;
+        if (matPutVariable(pmat, "A", matrixA) != 0) {
+            std::cerr << __FILE__ << " : " << "Error using matPutvariable on line " << __LINE__ << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        mxDestroyArray(matrixA);
+
+        mxArray *vectorB = mxCreateDoubleMatrix(b.size(), 1, mxREAL);
+        for (int i = 0; i < b.size(); i++) {
+             mxGetDoubles(vectorB)[i] = (double)b[i] / (D[i] * dualScaler);
+        }
+        if (matPutVariable(pmat, "b", vectorB) != 0) {
+            std::cerr << __FILE__ << " : " << "Error using matPutvariable on line " << __LINE__ << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        mxDestroyArray(vectorB);
+
+        mxArray *vectorC = mxCreateSparse(c.rows(), c.cols(), c.nonZeros(), mxREAL);
+        ir = mxGetIr(vectorC);
+        jc = mxGetJc(vectorC);
+        pr = mxGetDoubles(vectorC);
+        nzCnt = 0;
+        for (int i = 0; i < c.outerSize(); i++) {
+            jc[i] = nzCnt;
+            for (Eigen::SparseVector<double>::InnerIterator it(c, i); it; ++it) {
+                pr[nzCnt] = it.value() / (E[it.row()] * primalScaler);
+                ir[nzCnt] = it.row();
+                nzCnt++;
+            }
+        }
+        jc[c.outerSize()] = nzCnt;
+        if (matPutVariable(pmat, "c", vectorC) != 0) {
+            std::cerr << __FILE__ << " : " << "Error using matPutvariable on line " << __LINE__ << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        mxDestroyArray(vectorC);
+        
+        const char *fieldNames[] = {"f", "s"};
+        mxArray *coneInfo = mxCreateStructMatrix(1, 1, 2, fieldNames);
+        
+        int freeConeID = mxGetFieldNumber(coneInfo, "f");
+        mxArray *freeConeFieldValue = mxCreateDoubleMatrix(1, 1, mxREAL);
+        *mxGetDoubles(freeConeFieldValue) = freeConeSize * 1.0;
+        mxSetFieldByNumber(coneInfo, 0, freeConeID, freeConeFieldValue);
+        
+        int psdConeID = mxGetFieldNumber(coneInfo, "s");
+        mxArray *psdConeFieldValue = mxCreateDoubleMatrix(1, psdMatrixSizes.size(), mxREAL);
+        for (int i = 0; i < psdMatrixSizes.size(); i++) {
+            mxGetDoubles(psdConeFieldValue)[i] = psdMatrixSizes[i] * 1.0;
+        }
+        mxSetFieldByNumber(coneInfo, 0, psdConeID, psdConeFieldValue);
+        
+        if (matPutVariable(pmat, "K", coneInfo) != 0) {
+            std::cerr << __FILE__ << " : " << "Error using matPutvariable on line " << __LINE__ << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        mxDestroyArray(coneInfo);
+
+        if (matClose(pmat) != 0) {
+            std::cerr << "Error closing file " << fileName << std::endl;
+            exit(EXIT_FAILURE);
+        }
     }
 }

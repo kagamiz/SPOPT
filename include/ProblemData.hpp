@@ -5,6 +5,7 @@
 
 #include "LinearAlgebra.hpp"
 #include "Polynomial.hpp"
+#include "MATLAB.hpp"
 
 namespace SPOPT {
 
@@ -34,7 +35,11 @@ namespace SPOPT {
 
             void ConstructSDP();
             void ShowConstraints();
-            void ShowAsJuliaForm();
+
+            // Output for other solvers
+            void OutputJuliaFile(std::string fileName = "");
+            // Output the Matrix A, b, c, and cone information
+            void OutputMatFile(std::string fileName = "outfile.mat");
 
             // returns whether the problem is unconstrained problem (i.e. K = \mathbb{R}^n) or not.
             bool IsUnconstrained() const;
@@ -42,6 +47,12 @@ namespace SPOPT {
             friend Solver;
 
         private:
+            /* Declaration of EnumType */
+            enum ConstraintType {
+                EqualityConstraint,
+                InequalityConstraint,
+                BoundConstraint
+            };
             /* Data to be loaded from the function `LoadConfig`. */
 
             // Polynomials that characterize the POP
@@ -55,6 +66,10 @@ namespace SPOPT {
             // Options
             bool enableScaling;
             bool enableGradientConstraint;
+            bool enableGradientConstraintType2;
+            bool enableObjValueBound;
+            double lowerBoundConstant;
+            double upperBoundConstant;
 
             /* Other data to be constructed from the function `ConstructSDP` */
 
@@ -85,12 +100,14 @@ namespace SPOPT {
 
             /* Private Member Functions */
 
+            void _AddGradientConstraints();
             void _ConstructNewConstraints(); // make new constraints by traversing originalJunctionTree
             void _TraverseTree(int v, int p, int &newVariableIndex,
                               std::vector<std::vector<Monomial>> &objectiveMonomials,
                               std::vector<std::vector<int>> &objectiveIDs,
                               std::vector<std::vector<std::vector<Monomial>>> &constraintMonomials,
                               std::vector<std::vector<int>> &constraintIDs,
+                              std::vector<ConstraintType>   &constraintTypes,
                               std::vector<bool> &visited,
                               int &variableOrder);
             
