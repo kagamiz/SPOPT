@@ -842,13 +842,15 @@ namespace SPOPT {
         }
     }
 
-    void ProblemData::ShowAsJuliaForm()
+    void ProblemData::OutputJuliaFile(std::string fileName)
     {
-        std::cout << "using CPUTime;" << std::endl;
-        std::cout << "using TSSOS;" << std::endl;
-        std::cout << "using DynamicPolynomials;" << std::endl;
-        std::cout << "using SparseArrays;" << std::endl;
-        std::cout << "using MultivariatePolynomials;" << std::endl;
+        std::ostream &os = (fileName == "" ? *(new std::ofstream(fileName)) : std::cout);
+
+        os << "using CPUTime;" << std::endl;
+        os << "using TSSOS;" << std::endl;
+        os << "using DynamicPolynomials;" << std::endl;
+        os << "using SparseArrays;" << std::endl;
+        os << "using MultivariatePolynomials;" << std::endl;
 
         int maxIndex = objectiveFunction.maxIndex;
         for (auto convertedEqualityConstraint : convertedEqualityConstraints) {
@@ -858,16 +860,133 @@ namespace SPOPT {
             maxIndex = std::max(maxIndex, (int)convertedInequalityConstraint.maxIndex);
         }
 
-        std::cout << "@polyvar x[1:" << maxIndex + 1 << "];" << std::endl;
-        std::cout << "f=" << objectiveFunction.ToString(/* oneIndexed = */true) << ";" << std::endl;
-        std::cout << "pop=[f];" << std::endl;
+        os << "@polyvar x[1:" << maxIndex + 1 << "];" << std::endl;
+        os << "f=" << objectiveFunction.ToString(/* oneIndexed = */true) << ";" << std::endl;
+        os << "pop=[f];" << std::endl;
         for (auto convertedInequalityConstraint : convertedInequalityConstraints) {
-            std::cout << "push!(pop, " << convertedInequalityConstraint.ToString(/* oneIndexed = */true) << ");" << std::endl;
+            os << "push!(pop, " << convertedInequalityConstraint.ToString(/* oneIndexed = */true) << ");" << std::endl;
         }
         for (auto convertedEqualityConstraint : convertedEqualityConstraints) {
-            std::cout << "push!(pop, " << convertedEqualityConstraint.ToString(/* oneIndexed = */true) << ");" << std::endl;
+            os << "push!(pop, " << convertedEqualityConstraint.ToString(/* oneIndexed = */true) << ");" << std::endl;
         }
-        std::cout << "order=" << hierarchyDegree << ";" << std::endl;
-        std::cout << "@CPUtime opt,sol,data=cs_tssos_first(pop,x,order,numeq=" << convertedEqualityConstraints.size() << ",TS=false,MomentOne=true,solution=true);" << std::endl;
+        os << "order=" << hierarchyDegree << ";" << std::endl;
+        os << "@CPUtime opt,sol,data=cs_tssos_first(pop,x,order,numeq=" << convertedEqualityConstraints.size() << ",TS=false,MomentOne=true,solution=true);" << std::endl;
+
+        if (&os != &std::cout) {
+            delete(&os);
+        }
+    }
+
+    void ProblemData::OutputMatFile(std::string fileName)
+    {
+        MATFile *pmat = matOpen(fileName.c_str(), "w");
+        if (pmat == NULL) {
+            std::cerr << "Error creating file " << fileName << std::endl;
+            exit(EXIT_FAILURE);
+        }
+
+        mxArray *matrixA = mxCreateSparse(A.rows(), A.cols(), A.nonZeros(), mxREAL);
+        mwIndex *ir, *jc;
+        double *pr;
+        ir = mxGetIr(matrixA);
+        jc = mxGetJc(matrixA);
+        pr = mxGetDoubles(matrixA);
+
+        std::vector<int> AColPerm(A.cols());
+        AColPerm[0] = 0;
+        int ctr = 1;
+        int IndOffset = 1;
+        int freeConeSize = 1;
+        for (int i = 0; i < psdMatrixSizes.size(); i++) {
+            IndOffset += psdMatrixSizes[i] * psdMatrixSizes[i];
+        }
+        for (int i = 0; i < symmetricMatrixSizes.size(); i++) {
+            int symSize = symmetricMatrixSizes[i] * symmetricMatrixSizes[i];
+            for (int j = 0; j < symSize; j++) {
+                AColPerm[ctr] = IndOffset;
+                IndOffset++; ctr++;
+            }
+            freeConeSize += symSize;
+        }
+        IndOffset = 1;
+        for (int i = 0; i < psdMatrixSizes.size(); i++) {
+            int psdSize = psdMatrixSizes[i] * psdMatrixSizes[i];
+            for (int j = 0; j < psdSize; j++) {
+                AColPerm[ctr] = IndOffset;
+                IndOffset++; ctr++;
+            }
+        }
+
+        int nzCnt = 0;
+        for (int i = 0; i < A.outerSize(); i++) {
+            jc[i] = nzCnt;
+            for (Eigen::SparseMatrix<double>::InnerIterator it(A, AColPerm[i]); it; ++it) {
+                pr[nzCnt] = it.value() / (D[it.row()] * E[it.col()]);
+                ir[nzCnt] = it.row();
+                nzCnt++;
+            }
+        }
+        jc[A.outerSize()] = nzCnt;
+        if (matPutVariable(pmat, "A", matrixA) != 0) {
+            std::cerr << __FILE__ << " : " << "Error using matPutvariable on line " << __LINE__ << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        mxDestroyArray(matrixA);
+
+        mxArray *vectorB = mxCreateDoubleMatrix(b.size(), 1, mxREAL);
+        for (int i = 0; i < b.size(); i++) {
+             mxGetDoubles(vectorB)[i] = (double)b[i] / (D[i] * dualScaler);
+        }
+        if (matPutVariable(pmat, "b", vectorB) != 0) {
+            std::cerr << __FILE__ << " : " << "Error using matPutvariable on line " << __LINE__ << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        mxDestroyArray(vectorB);
+
+        mxArray *vectorC = mxCreateSparse(c.rows(), c.cols(), c.nonZeros(), mxREAL);
+        ir = mxGetIr(vectorC);
+        jc = mxGetJc(vectorC);
+        pr = mxGetDoubles(vectorC);
+        nzCnt = 0;
+        for (int i = 0; i < c.outerSize(); i++) {
+            jc[i] = nzCnt;
+            for (Eigen::SparseVector<double>::InnerIterator it(c, i); it; ++it) {
+                pr[nzCnt] = it.value() / (E[it.row()] * primalScaler);
+                ir[nzCnt] = it.row();
+                nzCnt++;
+            }
+        }
+        jc[c.outerSize()] = nzCnt;
+        if (matPutVariable(pmat, "c", vectorC) != 0) {
+            std::cerr << __FILE__ << " : " << "Error using matPutvariable on line " << __LINE__ << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        mxDestroyArray(vectorC);
+        
+        const char *fieldNames[] = {"f", "s"};
+        mxArray *coneInfo = mxCreateStructMatrix(1, 1, 2, fieldNames);
+        
+        int freeConeID = mxGetFieldNumber(coneInfo, "f");
+        mxArray *freeConeFieldValue = mxCreateDoubleMatrix(1, 1, mxREAL);
+        *mxGetDoubles(freeConeFieldValue) = freeConeSize * 1.0;
+        mxSetFieldByNumber(coneInfo, 0, freeConeID, freeConeFieldValue);
+        
+        int psdConeID = mxGetFieldNumber(coneInfo, "s");
+        mxArray *psdConeFieldValue = mxCreateDoubleMatrix(1, psdMatrixSizes.size(), mxREAL);
+        for (int i = 0; i < psdMatrixSizes.size(); i++) {
+            mxGetDoubles(psdConeFieldValue)[i] = psdMatrixSizes[i] * 1.0;
+        }
+        mxSetFieldByNumber(coneInfo, 0, psdConeID, psdConeFieldValue);
+        
+        if (matPutVariable(pmat, "K", coneInfo) != 0) {
+            std::cerr << __FILE__ << " : " << "Error using matPutvariable on line " << __LINE__ << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        mxDestroyArray(coneInfo);
+
+        if (matClose(pmat) != 0) {
+            std::cerr << "Error closing file " << fileName << std::endl;
+            exit(EXIT_FAILURE);
+        }
     }
 }

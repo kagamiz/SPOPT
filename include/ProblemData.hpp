@@ -5,6 +5,7 @@
 
 #include "LinearAlgebra.hpp"
 #include "Polynomial.hpp"
+#include "MATLAB.hpp"
 
 namespace SPOPT {
 
@@ -34,7 +35,11 @@ namespace SPOPT {
 
             void ConstructSDP();
             void ShowConstraints();
-            void ShowAsJuliaForm();
+
+            // Output for other solvers
+            void OutputJuliaFile(std::string fileName = "");
+            // Output the Matrix A, b, c, and cone information
+            void OutputMatFile(std::string fileName = "outfile.mat");
 
             // returns whether the problem is unconstrained problem (i.e. K = \mathbb{R}^n) or not.
             bool IsUnconstrained() const;

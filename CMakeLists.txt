@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.1)
 
 add_compile_options(-std=c++17 -O3)
-link_directories(${CMAKE_SOURCE_DIR}/ext/lib/)
+link_directories(${CMAKE_SOURCE_DIR}/ext/lib/ ${CMAKE_SOURCE_DIR}/ext/lib/matlab/)
 
 project(SPOPT CXX)
 
 add_library(problem_data STATIC ./src/ProblemData.cpp)
 target_include_directories(problem_data PUBLIC ./include ./ext/include/)
-target_link_libraries(problem_data libyaml-cpp.a)
+target_link_libraries(problem_data libyaml-cpp.a libmat.dylib libmex.dylib libmx.dylib)
 
 add_library(solver STATIC ./src/Solver.cpp)
 target_include_directories(solver PUBLIC ./include ./ext/include/)
