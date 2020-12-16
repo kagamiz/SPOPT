@@ -32,7 +32,8 @@ namespace SPOPT {
 
             void Solve(const ProblemData &problemData);
             void EnumerateStationaryPoints(const ProblemData &problemData);
-        
+
+            virtual ~Solver(){};
         protected:
             bool IsTerminationCriterionSatisfied(const ProblemData &problemData, const Eigen::VectorXd &v);
 
