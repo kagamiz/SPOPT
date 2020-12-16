@@ -84,6 +84,15 @@ namespace SPOPT {
                 return oss.str();
             }
 
+            double Evaluate(std::vector<double> &values)
+            {
+                double ret = coefficient;
+                for (auto &ind : term) {
+                    ret *= values[ind];
+                }
+                return ret;
+            }
+
             int degree;
             Term term;
             double coefficient;
@@ -91,8 +100,13 @@ namespace SPOPT {
 
     class Polynomial {
         public:
-            Polynomial(){ degree = 0; maxIndex = -1; }
-            Polynomial(Monomial m) {
+            Polynomial()
+            { 
+                degree = 0; maxIndex = -1;
+            }
+
+            Polynomial(Monomial m)
+            {
                 monomials[m.term] = m.coefficient;
                 degree = m.degree;
                 maxIndex = -1;
@@ -100,7 +114,9 @@ namespace SPOPT {
                     maxIndex = *max_element(m.term.begin(), m.term.end());
                 }
             }
-            Polynomial(std::map<Term, double> &m) : monomials(m) {
+
+            Polynomial(std::map<Term, double> &m) : monomials(m)
+            {
                 degree = 0;
                 maxIndex = -1;
                 for (auto monomial : monomials) {
@@ -110,7 +126,9 @@ namespace SPOPT {
                     }
                 }
             }
-            Polynomial(std::vector<Monomial> &m) {
+
+            Polynomial(std::vector<Monomial> &m)
+            {
                 degree = 0;
                 maxIndex = -1;
                 for (auto monomial : m) {
@@ -126,7 +144,9 @@ namespace SPOPT {
                     }
                 }
             }
-            Polynomial(std::string fileName) {
+
+            Polynomial(std::string fileName)
+            {
                 std::ifstream ifs;
                 ifs.open(fileName);
 
@@ -161,12 +181,14 @@ namespace SPOPT {
                 }
             }
 
-            void LoadFromFile(std::string fileName) {
+            void LoadFromFile(std::string fileName)
+            {
                 Polynomial tmp(fileName);
                 *this = std::move(tmp); 
             }
 
-            Polynomial operator + (const Polynomial &rhs) {
+            Polynomial operator + (const Polynomial &rhs)
+            {
                 Polynomial ret = *this;
                 ret.degree = std::max(this->degree, rhs.degree);
                 ret.maxIndex = std::max(this->maxIndex, rhs.maxIndex);
@@ -181,12 +203,14 @@ namespace SPOPT {
                 return ret;
             }
 
-            Polynomial &operator += (const Polynomial &rhs) {
+            Polynomial &operator += (const Polynomial &rhs)
+            {
                 *this = *this + rhs;
                 return *this;
             }
 
-            const Polynomial operator -() const {
+            const Polynomial operator -() const
+            {
                 Polynomial ret = *this;
                 for (auto &monomial : ret.monomials) {
                     monomial.second = -monomial.second;
@@ -194,16 +218,19 @@ namespace SPOPT {
                 return ret;
             }
 
-            Polynomial operator - (const Polynomial &rhs) {
+            Polynomial operator - (const Polynomial &rhs)
+            {
                 return *this + (-rhs);
             }
 
-            Polynomial &operator -= (const Polynomial &rhs) {
+            Polynomial &operator -= (const Polynomial &rhs)
+            {
                 *this = *this - rhs;
                 return *this;
             }
 
-            Polynomial operator * (const Monomial &m) {
+            Polynomial operator * (const Monomial &m)
+            {
                 Polynomial ret;
                 for (auto monomial : monomials) {
                     Monomial newMonomial = Monomial(monomial.first, monomial.second) * m;
@@ -216,7 +243,8 @@ namespace SPOPT {
                 return ret;
             }
 
-            Polynomial operator * (const Polynomial &p) {
+            Polynomial operator * (const Polynomial &p)
+            {
                 Polynomial ret;
                 for (auto monomial : p.monomials) {
                     Polynomial tmp = *this * Monomial(monomial.first, monomial.second);
@@ -225,7 +253,8 @@ namespace SPOPT {
                 return ret;
             }
 
-            std::string ToString(bool oneIndexed = false) {
+            std::string ToString(bool oneIndexed = false)
+            {
                 std::string res;
                 int outputNum = 0;
                 for (auto monomial : monomials) {
@@ -233,6 +262,15 @@ namespace SPOPT {
                     outputNum++;
                 }
                 return outputNum == 0 ? "0" : res;
+            }
+
+            double Evaluate(std::vector<double> &values)
+            {
+                double res = 0;
+                for (auto &monomial : monomials) {
+                    res += Monomial(monomial.first, monomial.second, /* sorted = */true).Evaluate(values);
+                }
+                return res;
             }
 
             int degree;
