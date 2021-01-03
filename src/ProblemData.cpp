@@ -652,7 +652,7 @@ namespace SPOPT {
 
         std::vector<Eigen::Triplet<double>> tripletList;
 
-        tripletList.emplace_back(termToInteger[Term({})], termToInteger[Term({})], 1);
+        tripletList.emplace_back(termToInteger[Term({})], 0, 1);
 
         int leftmostPosition = 1;
 
@@ -728,7 +728,7 @@ namespace SPOPT {
     void ProblemData::_ConstructVectorC()
     {
         c.resize(A.cols());
-        c.coeffRef(termToInteger[Term({})]) = 1;
+        c.coeffRef(0) = 1;
 
         originalCNorm = 1;
     }
