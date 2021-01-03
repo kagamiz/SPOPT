@@ -76,13 +76,12 @@ namespace SPOPT {
         if (enableGradientConstraintType2) {
             _AddGradientConstraints();
         }
-        _ConstructNewConstraints(); std::cout << "1" << std::endl;
-        ShowPOP();
-        _ConstructTermMap();std::cout << "2" << std::endl;
-        _ConstructVectorB();std::cout << "3" << std::endl;
-        _ConstructMatrixA();std::cout << "4" << std::endl;
-        _ConstructVectorC();std::cout << "5" << std::endl;
-        _ConstructScalingData();std::cout << "6" << std::endl;
+        _ConstructNewConstraints();
+        _ConstructTermMap();
+        _ConstructVectorB();
+        _ConstructMatrixA();
+        _ConstructVectorC();
+        _ConstructScalingData();
     }
 
     void ProblemData::_AddGradientConstraints()
