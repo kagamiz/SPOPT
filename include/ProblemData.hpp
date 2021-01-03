@@ -34,7 +34,7 @@ namespace SPOPT {
             void LoadConfig(std::string fileName);
 
             void ConstructSDP();
-            void ShowConstraints();
+            void ShowPOP();
 
             // Output for other solvers
             void OutputJuliaFile(std::string fileName = "");
@@ -43,6 +43,10 @@ namespace SPOPT {
 
             // returns whether the problem is unconstrained problem (i.e. K = \mathbb{R}^n) or not.
             bool IsUnconstrained() const;
+
+            // returns approximate point that satisfies moment conditions by
+            // an algorithm proposed by Henrion & Lasserre (2006).
+            std::vector<Eigen::VectorXd> ExtractSolutionsFrom(std::vector<double> &v);
             
             friend Solver;
 
@@ -124,6 +128,9 @@ namespace SPOPT {
 
             // transforms term to an integer ordered by perfect elimination ordering of variables
             std::map<Term, int> termToInteger;
+
+            // auxiliary function used to extract an approximate solutions from truncated moments
+            void _GenerateSolutions(int cur, std::vector<std::vector<std::vector<double>>> &solutionCandidates, std::vector<bool> &done, std::vector<double> &tmp, std::vector<Eigen::VectorXd> &answers);
 };
 }
 #endif //__PROBLEM_DATA_HPP__
