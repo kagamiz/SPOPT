@@ -344,7 +344,7 @@ namespace SPOPT {
                 Polynomial poly;
                 if (v != 0) {
                     Term t = {constraintIDs[i][v]};
-                    poly -= Monomial(t, -1, /* sorted = */true);
+                    poly += Monomial(t, -1, /* sorted = */true);
                 }
                 for (int j = 0; j < constraintMonomials[i][v].size(); j++) {
                     poly += constraintMonomials[i][v][j];
