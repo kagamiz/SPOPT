@@ -33,7 +33,7 @@ target_include_directories(mosek_solver PUBLIC ./include ./ext/include ./ext/inc
 if(APPLE)
     target_link_libraries(mosek_solver solver libmosek64.9.2.dylib libfusion64.9.2.dylib)
 else()
-    target_link_libraries(mosek_solver solver libmosek64.so.9.2 libfusion64.so.9.2)
+    target_link_libraries(mosek_solver solver libmosek64.so libfusion64.so)
 endif()
 
 add_library(scs_solver STATIC ./src/SCSSolver.cpp)
