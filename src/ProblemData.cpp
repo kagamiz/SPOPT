@@ -13,10 +13,12 @@ namespace SPOPT {
         YAML::Node problemDataConfig = YAML::LoadFile(fileName);
 
         enableScaling                 = problemDataConfig["enableScaling"].as<bool>(true);
+        scalingFactor                 = problemDataConfig["scalingFactor"].as<double>(5.0);
         enableGradientConstraint      = problemDataConfig["enableGradientConstraint"].as<bool>(false);
         enableGradientConstraintType2 = problemDataConfig["enableGradientConstraintType2"].as<bool>(false);
-        enableObjValueBound           = problemDataConfig["enableObjValueBound"].as<bool>(false);
+        enableLowerBound              = problemDataConfig["enableLowerBound"].as<bool>(false);
         lowerBoundConstant            = problemDataConfig["lowerBoundConstant"].as<double>(0.0);
+        enableUpperBound              = problemDataConfig["enableUpperBound"].as<bool>(false);
         upperBoundConstant            = problemDataConfig["upperBoundConstant"].as<double>(0.0);
 
         objectiveFunction.LoadFromFile(problemDataConfig["objectiveFunctionFile"].as<std::string>("examples/affine.txt"));
@@ -78,8 +80,8 @@ namespace SPOPT {
         }
         _ConstructNewConstraints();
         _ConstructTermMap();
-        _ConstructVectorB();
         _ConstructMatrixA();
+        _ConstructVectorB();
         _ConstructVectorC();
         _ConstructScalingData();
     }
@@ -104,6 +106,14 @@ namespace SPOPT {
         std::vector<ConstraintType>        constraintTypes;
         std::vector<Polynomial>            unpartitionedConstraints;
         std::vector<ConstraintType>        unpartitionedConstraintTypes;
+
+        if (enableLowerBound) {
+            originalInequalityConstraints.emplace_back(objectiveFunction - Monomial(lowerBoundConstant));
+        }
+
+        if (enableUpperBound) {
+            originalInequalityConstraints.emplace_back(-(objectiveFunction - Monomial(upperBoundConstant)));
+        }
 
         std::vector<Polynomial> tmpPolys;
         tmpPolys.insert(tmpPolys.end(), originalEqualityConstraints.begin(), originalEqualityConstraints.end());
@@ -134,11 +144,6 @@ namespace SPOPT {
                 constraints.emplace_back(originalConstraint);
                 constraintTypes.emplace_back(i < originalEqualityConstraints.size() ? ConstraintType::EqualityConstraint : ConstraintType::InequalityConstraint);
             }
-        }
-
-        if (enableObjValueBound) {
-            constraints.emplace_back(objectiveFunction);
-            constraintTypes.emplace_back(ConstraintType::BoundConstraint);
         }
 
         int maxDegree = objectiveFunction.degree;
@@ -211,13 +216,13 @@ namespace SPOPT {
                 constraintMonomials[i][indexSetToID[t]].emplace_back(monomial.first, monomial.second, /* sorted = */true);
             }
 
-            for (int j = 0; j < originalIndexSets.size(); j++) {
+            for (int j = 1; j < originalIndexSets.size(); j++) {
                 constraintIDs[i][j] = newVariableID++;
             }
         }
 
         std::vector<bool> visited(objectiveFunction.maxIndex + 1);
-        int variableOrder = 1;
+        int variableOrder = 0;
         _TraverseTree(0, -1, newVariableID, objectiveMonomials, objectiveIDs, constraintMonomials, constraintIDs, constraintTypes, visited, variableOrder);
 
         for (int i = 0; i < unpartitionedConstraints.size(); i++) {
@@ -271,15 +276,17 @@ namespace SPOPT {
             }
         }
 
-        for (int i = 0; i < constraintIDs.size(); i++) {
-            if (variableOrderMap.find(constraintIDs[i][v]) == variableOrderMap.end()) {
-                variableOrderMap[constraintIDs[i][v]] = -1;
-                newVariables.emplace_back(constraintIDs[i][v]);
+        if (v != 0) {
+            for (int i = 0; i < constraintIDs.size(); i++) {
+                if (variableOrderMap.find(constraintIDs[i][v]) == variableOrderMap.end()) {
+                    variableOrderMap[constraintIDs[i][v]] = -1;
+                    newVariables.emplace_back(constraintIDs[i][v]);
+                }
             }
         }
 
         int newIndexSetID = convertedIndexSets.size();
-
+        #if 0
         if (p == -1) {
             for (int i = 0; i < constraintIDs.size(); i++) {
                 Term t = {constraintIDs[i][v]};
@@ -314,13 +321,23 @@ namespace SPOPT {
                 originalVariables.emplace_back(originalIndexSets[v][i]);
             }
         }
+        #endif
+
+        for (int i = 0; i < originalIndexSets[v].size(); i++) {
+            if (!visited[originalIndexSets[v][i]]) {
+                visited[originalIndexSets[v][i]] = true;
+                originalVariables.emplace_back(originalIndexSets[v][i]);
+            }
+        }
 
         int childNum = (int)originalJunctionTree[v].size() - (p == -1 ? 0 : 1);
 
         if (childNum == 0) {
             std::vector<int> newIndexSet = originalIndexSets[v];
-            for (int i = 0; i < constraintIDs.size(); i++) {
-                newIndexSet.emplace_back(constraintIDs[i][v]);
+            if (v != 0) {
+                for (int i = 0; i < constraintIDs.size(); i++) {
+                    newIndexSet.emplace_back(constraintIDs[i][v]);
+                }
             }
             if (enableGradientConstraint) {
                 newIndexSet.insert(newIndexSet.end(), objectiveIDs[v].begin(), objectiveIDs[v].end());
@@ -329,13 +346,23 @@ namespace SPOPT {
             convertedIndexSets.emplace_back(newIndexSet);
 
             for (int i = 0; i < constraintMonomials.size(); i++) {
-                Term t = {constraintIDs[i][v]};
-                Polynomial poly(Monomial(t, -1, /* sorted = */true));
+                Polynomial poly;
+                if (v != 0) {
+                    Term t = {constraintIDs[i][v]};
+                    poly += Monomial(t, -1, /* sorted = */true);
+                }
                 for (int j = 0; j < constraintMonomials[i][v].size(); j++) {
                     poly += constraintMonomials[i][v][j];
                 }
-                convertedEqualityConstraints.emplace_back(poly);
-                groupIDOfConvertedEqualityConstraints.emplace_back(newIndexSetID);
+
+                if (v == 0 && constraintTypes[i] == ConstraintType::InequalityConstraint) {
+                    convertedInequalityConstraints.emplace_back(poly);
+                    groupIDOfConvertedInequalityConstraints.emplace_back(newIndexSetID);
+                }
+                else {
+                    convertedEqualityConstraints.emplace_back(poly);
+                    groupIDOfConvertedEqualityConstraints.emplace_back(newIndexSetID);
+                }
             }
 
             if (enableGradientConstraint) {
@@ -354,8 +381,10 @@ namespace SPOPT {
         }
         else {
             std::vector<int> prvConstraintVariables;
-            for (int i = 0; i < constraintIDs.size(); i++) {
-                prvConstraintVariables.emplace_back(constraintIDs[i][v]);
+            if (v != 0) {
+                for (int i = 0; i < constraintIDs.size(); i++) {
+                    prvConstraintVariables.emplace_back(constraintIDs[i][v]);
+                }
             }
 
             std::vector<int> prvObjectiveVariables = (enableGradientConstraint ? objectiveIDs[v] : std::vector<int>());
@@ -385,7 +414,9 @@ namespace SPOPT {
 
                     Polynomial poly;
                     if (childNum > 1) {
-                        poly += Monomial(Term({prvConstraintVariables[j]}), -1, /* sorted = */true);
+                        if (v != 0) {
+                            poly += Monomial(Term({prvConstraintVariables[j]}), -1, /* sorted = */true);
+                        }
                         poly += Monomial(Term({constraintIDs[j][nx]}), 1, /* sorted = */true);
                         poly += Monomial(Term({newVariableIndex}), 1, /* sorted = */true);
 
@@ -397,14 +428,22 @@ namespace SPOPT {
                         newVariableIndex++;
                     }
                     else {
-                        poly += Monomial(Term({prvConstraintVariables[j]}), -1, /* sorted = */true);
+                        if (v != 0) {
+                            poly += Monomial(Term({prvConstraintVariables[j]}), -1, /* sorted = */true);
+                        }
                         poly += Monomial(Term({constraintIDs[j][nx]}), 1, /* sorted = */true);
                         for (int k = 0; k < constraintMonomials[j][v].size(); k++) {
                             poly += constraintMonomials[j][v][k];
                         }
                     }
-                    convertedEqualityConstraints.emplace_back(poly);
-                    groupIDOfConvertedEqualityConstraints.emplace_back(newIndexSetID);
+                    if (v == 0 && constraintTypes[j] == ConstraintType::InequalityConstraint) {
+                        convertedInequalityConstraints.emplace_back(poly);
+                        groupIDOfConvertedInequalityConstraints.emplace_back(newIndexSetID);
+                    }
+                    else {
+                        convertedEqualityConstraints.emplace_back(poly);
+                        groupIDOfConvertedEqualityConstraints.emplace_back(newIndexSetID);
+                    }
                 }
 
                 std::vector<int> nxtObjectiveVariables;
@@ -527,14 +566,14 @@ namespace SPOPT {
                     Term t2 = convertedTermSets[i][k];
                     Term merged;
                     int it1 = 0, it2 = 0, len = t1.size() + t2.size();
-                    int rank = 0;
+                    int rank = variableOrderMap.size();
                     while (it1 + it2 < len) {
                         if (it2 == t2.size() || (it1 < t1.size() && t1[it1] <= t2[it2])) {
-                            rank = std::max(rank, variableOrderMap[t1[it1]]);
+                            rank = std::min(rank, variableOrderMap[t1[it1]]);
                             merged.push_back(t1[it1]); it1++;
                         }
                         else {
-                            rank = std::max(rank, variableOrderMap[t2[it2]]);
+                            rank = std::min(rank, variableOrderMap[t2[it2]]);
                             merged.push_back(t2[it2]); it2++;
                         }
                     }
@@ -553,7 +592,7 @@ namespace SPOPT {
 
     void ProblemData::_ConstructVectorB()
     {
-        b.setZero(termToInteger.size());
+        b.setZero(A.rows());
 
         for (auto monomial : objectiveFunction.monomials) {
             b(termToInteger[monomial.first]) = monomial.second;
@@ -564,7 +603,7 @@ namespace SPOPT {
 
     void ProblemData::_ConstructMatrixA()
     {
-        int rowNumOfA = termToInteger.size();
+        int rowNumOfA = termToInteger.size() + (enableLowerBound) + (enableUpperBound);
         int colNumOfA = 0;
 
         int maxSize = 0;
@@ -596,7 +635,7 @@ namespace SPOPT {
         // add colNum of A_2
         for (auto &convertedTermSet : convertedTermSets) {
             int sz = convertedTermSet.size();
-            colNumOfA += sz * sz;
+            colNumOfA += sz * (sz + 1) / 2;
             psdMatrixSizes.emplace_back(sz);
         }
         // add colNum of A_3
@@ -604,7 +643,7 @@ namespace SPOPT {
             int sz = convertedIndexSets[groupIDs[i]].size();
             int polyDeg = constraints[i].degree;
             int freeDeg = hierarchyDegree - (polyDeg + 1) / 2;
-            colNumOfA += C[sz + freeDeg][freeDeg] * C[sz + freeDeg][freeDeg];
+            colNumOfA += C[sz + freeDeg][freeDeg] * (C[sz + freeDeg][freeDeg] + 1) / 2;
 
             if (i < convertedInequalityConstraints.size()) {
                 psdMatrixSizes.emplace_back(C[sz + freeDeg][freeDeg]);
@@ -618,14 +657,14 @@ namespace SPOPT {
 
         std::vector<Eigen::Triplet<double>> tripletList;
 
-        tripletList.emplace_back(termToInteger[Term({})], termToInteger[Term({})], 1);
+        tripletList.emplace_back(termToInteger[Term({})], 0, 1);
 
         int leftmostPosition = 1;
-
+        double sq2 = sqrt(2);
         for (int i = 0; i < convertedTermSets.size(); i++) {
             int sz = convertedTermSets[i].size();
             for (int j = 0; j < sz; j++) {
-                for (int k = 0; k < sz; k++) {
+                for (int k = j; k < sz; k++) {
                     Term t1 = convertedTermSets[i][j];
                     Term t2 = convertedTermSets[i][k];
                     Term merged;
@@ -639,7 +678,8 @@ namespace SPOPT {
                         }
                     }
                     int id = termToInteger[merged];
-                    tripletList.emplace_back(id, leftmostPosition, 1);
+                    tripletList.emplace_back(id, leftmostPosition, 1 * (j != k ? sq2 : 1));
+                    if (j != k) sq2Cols.emplace_back(leftmostPosition);
                     leftmostPosition++;
                 }
             }
@@ -682,8 +722,9 @@ namespace SPOPT {
                         }
 
                         int id = termToInteger[merged];
-                        tripletList.emplace_back(id, leftmostPosition, coef);
+                        tripletList.emplace_back(id, leftmostPosition, coef * (j != k ? sq2 : 1));
                     }
+                    if (j != k) sq2Cols.emplace_back(leftmostPosition);
                     leftmostPosition++;
                 }
             }
@@ -694,7 +735,7 @@ namespace SPOPT {
     void ProblemData::_ConstructVectorC()
     {
         c.resize(A.cols());
-        c.coeffRef(termToInteger[Term({})]) = 1;
+        c.coeffRef(0) = 1;
 
         originalCNorm = 1;
     }
@@ -722,41 +763,42 @@ namespace SPOPT {
                 // calculate row norms and col norms
                 for (int i = 0; i < A.outerSize(); i++) {
                     for (Eigen::SparseMatrix<double>::InnerIterator it(A, i); it; ++it) {
-                        //Dt[it.row()] = std::max(Dt[it.row()], std::abs(it.value()));
-                        //Et[it.col()] = std::max(Et[it.col()], std::abs(it.value()));
-                        Dt[it.row()] += it.value() * it.value();
-                        Et[it.col()] += it.value() * it.value();
+                        Dt[it.row()] = std::max(Dt[it.row()], std::abs(it.value()));
+                        Et[it.col()] = std::max(Et[it.col()], std::abs(it.value()));
+                        //Dt[it.row()] += it.value() * it.value();
+                        //Et[it.col()] += it.value() * it.value();
                     }
                 }
+
+                for (int i = 0; i < A.cols(); i++) {
+                    Et[i] = std::clamp(sqrt(Et[i]), scalingMin / 10, scalingMax);
+                    if (Et[i] < scalingMin) Et[i] = 1.0;
+                }
+
+                for (int i = 0; i < A.rows(); i++) {
+                    Dt[i] = std::clamp(sqrt(Dt[i]), scalingMin / 10, scalingMax);
+                    if (Dt[i] < scalingMin) Dt[i] = 1.0;
+                }
+                /*
+                for (int i = 0; i < A.cols(); i++) {
+                    Et[i] = Et[i] * A.cols() / A.rows();
+                }
+                */
 
                 // mean of E across each cone
                 int leftmostPosition = 1;
                 for (auto matSize : psdMatrixSizes) {
                     double sum = 0;
-                    for (int i = 0; i < matSize * matSize; i++) {
+                    for (int i = 0; i < matSize * (matSize + 1) / 2; i++) {
                         sum += Et[leftmostPosition + i];
                     }
                     sum /= (matSize * matSize);
 
-                    for (int i = 0; i < matSize * matSize; i++) {
+                    for (int i = 0; i < matSize * (matSize + 1) / 2; i++) {
                         Et[leftmostPosition + i] = sum;
                     }
 
-                    leftmostPosition += matSize * matSize;
-                }
-
-                for (int i = 0; i < A.cols(); i++) {
-                    Et[i] = Et[i] * A.cols() / A.rows();
-                }
-
-                for (int i = 0; i < A.cols(); i++) {
-                    Et[i] = std::clamp(sqrt(sqrt(Et[i])), scalingMin / 10, scalingMax);
-                    if (Et[i] < scalingMin) Et[i] = 1.0;
-                }
-
-                for (int i = 0; i < A.rows(); i++) {
-                    Dt[i] = std::clamp(sqrt(sqrt(Dt[i])), scalingMin / 10, scalingMax);
-                    if (Dt[i] < scalingMin) Dt[i] = 1.0;
+                    leftmostPosition += matSize * (matSize + 1) / 2;
                 }
 
                 // scale the rows and cols with Dt and Et
@@ -812,14 +854,18 @@ namespace SPOPT {
                 //colNormMean += colInfNorms[i] / A.cols();
             }
 
+            for (int i = 0; i < A.outerSize(); i++) {
+                for (Eigen::SparseMatrix<double>::InnerIterator it(A, i); it; ++it) {
+                    it.valueRef() *= scalingFactor;
+                }
+            }
+
             // scale b
             for (int i = 0; i < A.rows(); i++) {
                 b(i) *= D[i];
             }
             dualScaler = colNormMean / std::max(b.norm(), 1e-6);
-            for (int i = 0; i < A.rows(); i++) {
-                b(i) *= dualScaler;
-            }
+            b *= dualScaler * scalingFactor;
 
             // scale c
             for (Eigen::SparseVector<double>::InnerIterator it(c); it; ++it) {
@@ -827,12 +873,13 @@ namespace SPOPT {
             }
 
             primalScaler = rowNormMean / std::max(c.norm(), 1e-6);
-            c *= primalScaler;
+            c *= primalScaler * scalingFactor;
         }
     }
 
-    void ProblemData::ShowConstraints()
+    void ProblemData::ShowPOP()
     {
+        std::cout << "minimize " << objectiveFunction.ToString() << std::endl;
         for (auto &eqConstraint : convertedEqualityConstraints) {
             std::cout << eqConstraint.ToString() << " == 0" << std::endl;
         }
@@ -879,6 +926,7 @@ namespace SPOPT {
 
     void ProblemData::OutputMatFile(std::string fileName)
     {
+        #ifdef __BUILD_WITH_MATLAB__
         MATFile *pmat = matOpen(fileName.c_str(), "w");
         if (pmat == NULL) {
             std::cerr << "Error creating file " << fileName << std::endl;
@@ -898,10 +946,10 @@ namespace SPOPT {
         int IndOffset = 1;
         int freeConeSize = 1;
         for (int i = 0; i < psdMatrixSizes.size(); i++) {
-            IndOffset += psdMatrixSizes[i] * psdMatrixSizes[i];
+            IndOffset += psdMatrixSizes[i] * (psdMatrixSizes[i] + 1) / 2;
         }
         for (int i = 0; i < symmetricMatrixSizes.size(); i++) {
-            int symSize = symmetricMatrixSizes[i] * symmetricMatrixSizes[i];
+            int symSize = symmetricMatrixSizes[i] * (symmetricMatrixSizes[i] + 1) / 2;
             for (int j = 0; j < symSize; j++) {
                 AColPerm[ctr] = IndOffset;
                 IndOffset++; ctr++;
@@ -910,23 +958,35 @@ namespace SPOPT {
         }
         IndOffset = 1;
         for (int i = 0; i < psdMatrixSizes.size(); i++) {
-            int psdSize = psdMatrixSizes[i] * psdMatrixSizes[i];
+            int psdSize = psdMatrixSizes[i] * (psdMatrixSizes[i] + 1) / 2;
             for (int j = 0; j < psdSize; j++) {
                 AColPerm[ctr] = IndOffset;
                 IndOffset++; ctr++;
             }
         }
 
+        Eigen::SparseMatrix<double> A2 = A;
+        int ind2 = 0;
+        for (int i = 0; i < A2.outerSize(); i++) {
+            for (Eigen::SparseMatrix<double>::InnerIterator it(A2, i); it; ++it) {
+                while (ind2 < sq2Cols.size() && sq2Cols[ind2] < it.col()) ind2++;
+                double scalingCoef = (ind2 < sq2Cols.size() && sq2Cols[ind2] == it.col()) ? sqrt(0.5) : 1;
+                it.valueRef() = it.value() / (scalingCoef * D[it.row()] * E[it.col()] * scalingFactor);
+            }
+        }
+        
+        std::vector<Eigen::Triplet<double>> tripletList;
         int nzCnt = 0;
-        for (int i = 0; i < A.outerSize(); i++) {
+        for (int i = 0; i < A2.outerSize(); i++) {
             jc[i] = nzCnt;
-            for (Eigen::SparseMatrix<double>::InnerIterator it(A, AColPerm[i]); it; ++it) {
-                pr[nzCnt] = it.value() / (D[it.row()] * E[it.col()]);
+            for (Eigen::SparseMatrix<double>::InnerIterator it(A2, AColPerm[i]); it; ++it) {
+                pr[nzCnt] = it.value();
                 ir[nzCnt] = it.row();
                 nzCnt++;
             }
         }
         jc[A.outerSize()] = nzCnt;
+        
         if (matPutVariable(pmat, "A", matrixA) != 0) {
             std::cerr << __FILE__ << " : " << "Error using matPutvariable on line " << __LINE__ << std::endl;
             exit(EXIT_FAILURE);
@@ -935,7 +995,7 @@ namespace SPOPT {
 
         mxArray *vectorB = mxCreateDoubleMatrix(b.size(), 1, mxREAL);
         for (int i = 0; i < b.size(); i++) {
-             mxGetDoubles(vectorB)[i] = (double)b[i] / (D[i] * dualScaler);
+             mxGetDoubles(vectorB)[i] = (double)b[i] / (D[i] * dualScaler * scalingFactor);
         }
         if (matPutVariable(pmat, "b", vectorB) != 0) {
             std::cerr << __FILE__ << " : " << "Error using matPutvariable on line " << __LINE__ << std::endl;
@@ -951,7 +1011,7 @@ namespace SPOPT {
         for (int i = 0; i < c.outerSize(); i++) {
             jc[i] = nzCnt;
             for (Eigen::SparseVector<double>::InnerIterator it(c, i); it; ++it) {
-                pr[nzCnt] = it.value() / (E[it.row()] * primalScaler);
+                pr[nzCnt] = it.value() / (E[it.row()] * primalScaler * scalingFactor);
                 ir[nzCnt] = it.row();
                 nzCnt++;
             }
@@ -988,5 +1048,224 @@ namespace SPOPT {
             std::cerr << "Error closing file " << fileName << std::endl;
             exit(EXIT_FAILURE);
         }
+        #endif //__BUILD_WITH_MATLAB__
+    }
+
+    void ProblemData::_GenerateSolutions(int cur, std::vector<std::vector<std::vector<double>>> &solutionCandidates, std::vector<bool> &done, std::vector<double> &tmp, std::vector<Eigen::VectorXd> &answers)
+    {
+        if (cur == solutionCandidates.size()) {
+            if (accumulate(done.begin(), done.end(), 0) == objectiveFunction.maxIndex) {
+                answers.emplace_back(Eigen::VectorXd::Map(tmp.data(), tmp.size()));
+            }
+            return;
+        }
+
+        std::vector<int> newIndices;
+
+        for (auto solutionCandidate : solutionCandidates[cur]) {
+            bool compatible = true;
+            for (int i = 0; i < solutionCandidate.size(); i++) {
+                int ind = convertedIndexSets[cur][i];
+                if (done[ind] && std::abs(tmp[ind] - solutionCandidate[i]) / std::max({1.0, std::abs(tmp[ind]), std::abs(solutionCandidate[i])}) >= 1e-3) {
+                    compatible = false;
+                    break;
+                }
+                else if (!done[ind]) {
+                    done[ind] = true;
+                    tmp[ind] = solutionCandidate[i];
+                    newIndices.emplace_back(ind);
+                }
+            }
+            if (compatible) {
+                _GenerateSolutions(cur + 1, solutionCandidates, done, tmp, answers);
+            }
+            for (auto i : newIndices) {
+                done[i] = false;
+            }
+            newIndices.clear();
+        }
+    }
+
+    std::vector<Eigen::VectorXd> ProblemData::ExtractSolutionsFrom(std::vector<double> &v)
+    {
+        int n = objectiveFunction.maxIndex;
+
+        std::vector<Eigen::VectorXd> ret;
+
+        using Point = std::vector<double>;
+        std::vector<std::vector<Point>> solutionCandidates(convertedIndexSets.size());
+
+        for (int i = 0; i < convertedIndexSets.size(); i++) {
+            int originalVariableNum = std::lower_bound(convertedIndexSets[i].begin(), convertedIndexSets[i].end(), n) - convertedIndexSets[i].begin();
+            int sz = 0;
+            std::vector<std::pair<int, int>> newOrd;
+            std::vector<bool> isOriginalTerms(convertedTermSets[i].size(), false);
+            std::vector<int> inds;
+
+            for (int j = 0; j < convertedTermSets[i].size(); j++) {
+                bool orig = true;
+                for (int k = 0; k < convertedTermSets[i][j].size(); k++) orig &= (convertedTermSets[i][j][k] < n);
+                isOriginalTerms[j] = orig;
+                if (orig) {
+                    sz++;
+                    newOrd.emplace_back(std::make_pair(convertedTermSets[i][j].size(), j));
+                }
+            }
+
+            std::sort(newOrd.begin(), newOrd.end());
+
+            for (int j = 0; j < newOrd.size(); j++) {
+                inds.emplace_back(newOrd[j].second);
+            }
+
+            Eigen::MatrixXd MomentMatrix = Eigen::MatrixXd::Zero(sz, sz);
+            for (int j = 0; j < sz; j++) {
+                for (int k = j; k < sz; k++) {
+                    Term tMerged;
+                    Term t1 = convertedTermSets[i][inds[j]], t2 = convertedTermSets[i][inds[k]];
+                    std::merge(t1.begin(), t1.end(), t2.begin(), t2.end(), std::back_inserter(tMerged));
+                    MomentMatrix(j, k) = v[termToInteger[tMerged]];
+                    if (j != k) {
+                        MomentMatrix(k, j) = MomentMatrix(j, k);
+                    }
+                }
+            }
+
+            Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigenSolver(MomentMatrix);
+            if (eigenSolver.info() != Eigen::Success) {
+                std::cout << "Error occured on eigen decomposition :(" << std::endl;
+                exit(1);
+            }
+
+            int positiveNum = 0;
+            for (int i = 0; i < sz; i++) {
+                double lambda = eigenSolver.eigenvalues()(i);
+                if (lambda / eigenSolver.eigenvalues()(sz - 1) > 1e-3) {
+                    positiveNum++;
+                }
+            }
+            
+            Eigen::MatrixXd V = Eigen::MatrixXd::Zero(sz, positiveNum);
+            {
+                int ptr = 0;
+                for (int i = 0; i < sz; i++) {
+                    double lambda = eigenSolver.eigenvalues()(i);
+                    if (lambda / eigenSolver.eigenvalues()(sz - 1) > 1e-3) {
+                        V.col(ptr) = sqrt(lambda) * eigenSolver.eigenvectors().col(i);
+                        ptr++;
+                    }
+                }
+            }
+
+            int colNumOfV = V.cols();
+            std::vector<Term> tmpTerms;
+
+            for (int j = 0; j < newOrd.size(); j++) {
+                tmpTerms.emplace_back(convertedTermSets[i][inds[j]]);
+            }
+
+            std::vector<Term> baseTerms;
+            {
+                int ptr = 0;
+                for (int j = 0; j < colNumOfV; ) {
+                    if (ptr == newOrd.size()) {
+                        std::cout << "[ExtractSolution] [Error] making column echelon form failed" << std::endl;
+                        return std::vector<Eigen::VectorXd>();
+                    }
+
+                    int bigCol = -1;
+                    for (int k = j; k < colNumOfV; k++) {
+                        if (bigCol == -1 || abs(V(ptr, k)) > abs(V(ptr, bigCol))) {
+                            bigCol = k;
+                        }
+                    }
+
+                    if (abs(V(ptr, bigCol)) < 1e-5) {
+                        ptr++; continue;
+                    }
+                    else if (bigCol != j) {
+                        V.col(j).swap(V.col(bigCol));
+                    }
+
+                    if (tmpTerms[ptr].size() == hierarchyDegree) {
+                        std::cout << "[ExtractSolution] [Error] degree of the monomial is too large" << std::endl;
+                        std::cout << V << std::endl;
+                        return std::vector<Eigen::VectorXd>();
+                    }
+
+                    baseTerms.emplace_back(tmpTerms[ptr]);
+
+                    V.col(j) /= V(ptr, j);
+                    for (int k = 0; k < colNumOfV; k++) {
+                        if (j != k) {
+                            V.col(k) -= V(ptr, k) * V.col(j);
+                            V(ptr, k) = 0;
+                        }
+                    }
+                    j++; ptr++;
+                }
+            }
+
+            std::map<Term, int> t2i;
+            for (int j = 0; j < sz; j++) {
+                t2i[tmpTerms[j]] = j;
+            }
+
+            //make a Multiplication Matrix
+            std::random_device seed_gen;
+            std::default_random_engine engine(seed_gen());
+
+            std::uniform_real_distribution<> dist(0.0, 1.0);
+            std::vector<double> lambdas(originalVariableNum);
+            for (int j = 0; j < originalVariableNum; j++) {
+                lambdas[j] = 1 - dist(engine);
+            }
+            double tot = std::accumulate(lambdas.begin(), lambdas.end(), 0.0);
+            for (int j = 0; j < originalVariableNum; j++) {
+                lambdas[j] /= tot;
+            }
+
+            Eigen::MatrixXd N = Eigen::MatrixXd::Zero(colNumOfV, colNumOfV);
+            std::vector<Eigen::MatrixXd> Ns;
+            for (int j = 0; j < originalVariableNum; j++) {
+                Eigen::MatrixXd Nj(colNumOfV, colNumOfV);
+                for (int k = 0; k < colNumOfV; k++) {
+                    Term term = baseTerms[k]; term.emplace_back(convertedIndexSets[i][j]);
+                    std::sort(term.begin(), term.end());
+                    Nj.row(k) = V.row(t2i[term]);
+                }
+                N += lambdas[j] * Nj;
+                Ns.emplace_back(Nj);
+            }
+            
+            Eigen::RealSchur<Eigen::MatrixXd> NSchur(N);
+            if (NSchur.matrixT().isUpperTriangular(1e-5) == false) {
+                std::cout << "[ExtractSolution] [Error] Schur Decompostion contains a complex number (i = " << i << ")" << std::endl;
+                std::cout << NSchur.matrixT() << std::endl;
+                return std::vector<Eigen::VectorXd>();
+            }
+
+            solutionCandidates[i].resize(colNumOfV);
+            for (int j = 0; j < colNumOfV; j++) solutionCandidates[i][j].resize(originalVariableNum);
+
+            Eigen::MatrixXd Q = NSchur.matrixU();
+            for (int j = 0; j < originalVariableNum; j++) {
+                for (int k = 0; k < colNumOfV; k++) {
+                    solutionCandidates[i][k][j] = Q.col(k).transpose() * Ns[j] * Q.col(k);
+                }
+            }
+
+            for (int j = 0; j < originalVariableNum; j++) {
+                std::cout << convertedIndexSets[i][j] << " = " << solutionCandidates[i][0][j] << ",";
+            }
+            std::cout << std::endl;
+        }
+
+        std::vector<bool>  done(n, false);
+        std::vector<double> tmp(n, 0);
+
+        _GenerateSolutions(0, solutionCandidates, done, tmp, ret);
+
+        return ret;
     }
 }

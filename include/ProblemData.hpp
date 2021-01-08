@@ -5,7 +5,9 @@
 
 #include "LinearAlgebra.hpp"
 #include "Polynomial.hpp"
+#ifdef __BUILD_WITH_MATLAB__
 #include "MATLAB.hpp"
+#endif //__BUILD_WITH_MATLAB__
 
 namespace SPOPT {
 
@@ -34,7 +36,7 @@ namespace SPOPT {
             void LoadConfig(std::string fileName);
 
             void ConstructSDP();
-            void ShowConstraints();
+            void ShowPOP();
 
             // Output for other solvers
             void OutputJuliaFile(std::string fileName = "");
@@ -43,6 +45,10 @@ namespace SPOPT {
 
             // returns whether the problem is unconstrained problem (i.e. K = \mathbb{R}^n) or not.
             bool IsUnconstrained() const;
+
+            // returns approximate point that satisfies moment conditions by
+            // an algorithm proposed by Henrion & Lasserre (2006).
+            std::vector<Eigen::VectorXd> ExtractSolutionsFrom(std::vector<double> &v);
             
             friend Solver;
 
@@ -67,9 +73,11 @@ namespace SPOPT {
             bool enableScaling;
             bool enableGradientConstraint;
             bool enableGradientConstraintType2;
-            bool enableObjValueBound;
+            bool enableLowerBound;
             double lowerBoundConstant;
+            bool enableUpperBound;
             double upperBoundConstant;
+            double scalingFactor;
 
             /* Other data to be constructed from the function `ConstructSDP` */
 
@@ -87,6 +95,8 @@ namespace SPOPT {
             Eigen::SparseMatrix<double> A;
             Eigen::SparseVector<double> c;
             Eigen::VectorXd b;
+
+            std::vector<int> sq2Cols;
 
             double originalBNorm, originalCNorm;
 
@@ -124,6 +134,9 @@ namespace SPOPT {
 
             // transforms term to an integer ordered by perfect elimination ordering of variables
             std::map<Term, int> termToInteger;
+
+            // auxiliary function used to extract an approximate solutions from truncated moments
+            void _GenerateSolutions(int cur, std::vector<std::vector<std::vector<double>>> &solutionCandidates, std::vector<bool> &done, std::vector<double> &tmp, std::vector<Eigen::VectorXd> &answers);
 };
 }
 #endif //__PROBLEM_DATA_HPP__
