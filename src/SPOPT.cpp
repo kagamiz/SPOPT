@@ -32,25 +32,29 @@ int main(int argc, char **argv)
 
     SPOPT::ProblemData problemData(problemDataConfigFileName);
     problemData.ConstructSDP();
-
+    
     if (vm.count("solver_config_file")) {
         YAML::Node solverConfig = YAML::LoadFile(solverConfigFileName);
         std::map<std::string, SPOPT::Solver *> solvers;
         solvers["DualLagrangianSolver"] = new SPOPT::DualLagrangianSolver();
         solvers["HSDESolver"] = new SPOPT::HSDESolver();
+        solvers["MOSEKSolver"] = new SPOPT::MOSEKSolver();
+        solvers["SCSSolver"] = new SPOPT::SCSSolver();
 
-        auto solverData = std::move(solvers[solverConfig["solverType"].as<std::string>()]);
+        auto solverData = solvers[solverConfig["solverType"].as<std::string>("MOSEKSolver")];
         solverData->LoadConfig(solverConfigFileName);
-
         solverData->Solve(problemData);
 
-        delete solvers["DualLagrangianSolver"];
-        delete solvers["HSDESolver"];
+        for (auto it = solvers.begin(); it != solvers.end(); it++) {
+            delete it->second;
+        }
     }
 
+    #ifdef __BUILD_WITH_MATLAB__
     if (vm.count("mat")) {
         problemData.OutputMatFile(fileName);
     }
+    #endif
 
     if (vm.count("tssos")) {
         problemData.OutputJuliaFile(fileName);

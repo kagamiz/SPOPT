@@ -1,6 +1,7 @@
 #include "HSDESolver.hpp"
 
 namespace SPOPT {
+    static const double sq2 = sqrt(2);
 
     HSDESolver::HSDESolver(std::string fileName)
     {
@@ -22,11 +23,13 @@ namespace SPOPT {
             IAAtFull.coeffRef(i, i) += 1;
         }
 
+        std::cout << "rowNum = " << MatrixA(problemData).rows() << " , colNum = " << MatrixA(problemData).cols() << std::endl;
         if (problemData.IsUnconstrained()) {
             sparseIAAt = IAAtFull.diagonal();
         }
         else {
             IAAt.compute(IAAtFull);
+            std::cout << "nnz(A) = " << IAAtFull.nonZeros() << std::endl;
         }
 
         zeta = Eigen::VectorXd::Zero(MatrixA(problemData).cols() + MatrixA(problemData).rows());
@@ -42,8 +45,8 @@ namespace SPOPT {
         Eigen::VectorXd u = Eigen::VectorXd::Zero(vecLength);
         Eigen::VectorXd v = Eigen::VectorXd::Zero(vecLength);
 
-        u(vecLength - 1) = 1;
-        v(vecLength - 1) = 1;
+        u(vecLength - 1) = sqrt(vecLength);
+        v(vecLength - 1) = sqrt(vecLength);
 
         Eigen::VectorXd ret(2 * vecLength);
         ret << u, v;
@@ -72,8 +75,9 @@ namespace SPOPT {
     Eigen::VectorXd HSDESolver::ApplyFixedPointFunction(const ProblemData &problemData, const Eigen::VectorXd &v)
     {
         int vecLength = MatrixA(problemData).cols() + MatrixA(problemData).rows() + 1;
-        Eigen::VectorXd curU = v.head(vecLength);
-        Eigen::VectorXd curV = v.tail(vecLength);
+        double totalNorm = v.norm();
+        Eigen::VectorXd curU = v.head(vecLength) * 10 * sqrt(vecLength) / totalNorm;
+        Eigen::VectorXd curV = v.tail(vecLength) * 10 * sqrt(vecLength) / totalNorm;
         Eigen::VectorXd tmpVector(vecLength - 1);
         Eigen::VectorXd uHat(vecLength);
 
@@ -84,7 +88,12 @@ namespace SPOPT {
         uHat.head(vecLength - 1) = tmpVector;
         uHat(vecLength - 1) = coef - VectorC(problemData).dot(tmpVector.head(MatrixA(problemData).cols())) + VectorB(problemData).dot(tmpVector.tail(MatrixA(problemData).rows()));
 
-        uHat = hsdeParam.alpha * uHat + (1 - hsdeParam.alpha) * curU;
+        //int rcount = MatrixA(problemData).rows();
+        //uHat.tail(rcount + 1) = hsdeParam.alpha * uHat.tail(rcount + 1) + (1 - hsdeParam.alpha) * curU.tail(rcount + 1);
+        //uHat = hsdeParam.alpha * uHat + (1 - hsdeParam.alpha) * curU;
+        int ccount = MatrixA(problemData).cols();
+        uHat.head(ccount) = hsdeParam.alpha * uHat.head(ccount) + (1 - hsdeParam.alpha) * curU.head(ccount);
+        uHat[vecLength - 1] = hsdeParam.alpha * uHat[vecLength - 1] + (1 - hsdeParam.alpha) * curU[vecLength - 1];
 
         Eigen::VectorXd newU = uHat - curV;
         
@@ -92,13 +101,14 @@ namespace SPOPT {
         for (auto psdMatrixSize : psdMatrixSizes(problemData)) {
             Eigen::MatrixXd tmpMatrix(psdMatrixSize, psdMatrixSize);
 
+            int ptr = 0;
             for (int i = 0; i < psdMatrixSize; i++) {
-                for (int j = 0; j < psdMatrixSize; j++) {
-                    tmpMatrix(i, j) = newU(leftmostPosition + i * psdMatrixSize + j);
-                    if (i > j) {
-                        double p = tmpMatrix(i, j), q = tmpMatrix(j, i);
-                        tmpMatrix(i, j) = tmpMatrix(j, i) = (p + q) / 2;
+                for (int j = i; j < psdMatrixSize; j++) {
+                    tmpMatrix(i, j) = newU(leftmostPosition + ptr) * (i != j ? sq2 / 2 : 1);
+                    if (i != j) {
+                        tmpMatrix(j, i) = tmpMatrix(i, j);
                     }
+                    ptr++;
                 }
             }
 
@@ -120,16 +130,20 @@ namespace SPOPT {
                 }
             }
 
+            ptr = 0;
             for (int i = 0; i < psdMatrixSize; i++) {
-                for (int j = 0; j < psdMatrixSize; j++) {
-                    newU(leftmostPosition + i * psdMatrixSize + j) = tmpMatrix2(i, j);
+                for (int j = i; j < psdMatrixSize; j++) {
+                    newU(leftmostPosition + ptr) = tmpMatrix2(i, j) * (i != j ? sq2 : 1);
+                    ptr++;
                 }
             }
-            leftmostPosition += psdMatrixSize * psdMatrixSize;
+            leftmostPosition += psdMatrixSize * (psdMatrixSize + 1) / 2;
         }
         if (newU(vecLength - 1) < 0) newU(vecLength - 1) = 0;
 
         Eigen::VectorXd newV = curV - uHat + newU;
+        //Eigen::VectorXd newV = curV;
+        //newV.tail(rcount + 1) += newU.tail(rcount + 1) - uHat.tail(rcount + 1);
 
         Eigen::VectorXd ret(2 * vecLength);
         ret << newU, newV;
@@ -149,7 +163,7 @@ namespace SPOPT {
         Eigen::VectorXd primalResidual = MatrixA(problemData) * x - VectorB(problemData);
 
         for (int i = 0; i < MatrixA(problemData).rows(); i++) {
-            primalResidual(i) /= (dualScaler(problemData) * VectorD(problemData)(i));
+            primalResidual(i) /= (scalingFactor(problemData) * dualScaler(problemData) * VectorD(problemData)(i));
         }
 
         return primalResidual.norm() / (1 + originalBNorm(problemData));
@@ -170,7 +184,7 @@ namespace SPOPT {
         Eigen::VectorXd dualResidual = z - At * y + VectorC(problemData);
 
         for (int i = 0; i < MatrixA(problemData).cols(); i++) {
-            dualResidual(i) /= (primalScaler(problemData) * VectorE(problemData)(i));
+            dualResidual(i) /= (scalingFactor(problemData) * primalScaler(problemData) * VectorE(problemData)(i));
         }
 
         return dualResidual.norm() / (1 + originalCNorm(problemData));
@@ -187,7 +201,7 @@ namespace SPOPT {
 
         Eigen::VectorXd x = vecU.head(MatrixA(problemData).cols()) / vecU(vecLength - 1);
 
-        return VectorC(problemData).dot(x) / (primalScaler(problemData) * dualScaler(problemData));
+        return VectorC(problemData).dot(x) / (scalingFactor(problemData) * primalScaler(problemData) * dualScaler(problemData));
     }
 
     double HSDESolver::GetDualObjValue(const ProblemData &problemData, const Eigen::VectorXd &v)
@@ -201,7 +215,7 @@ namespace SPOPT {
 
         Eigen::VectorXd y = vecU.segment(MatrixA(problemData).cols(), MatrixA(problemData).rows()) / vecU(vecLength - 1);
 
-        return VectorB(problemData).dot(y) / (primalScaler(problemData) * dualScaler(problemData));
+        return VectorB(problemData).dot(y) / (scalingFactor(problemData) * primalScaler(problemData) * dualScaler(problemData));
     }
 
     double HSDESolver::GetGap(const ProblemData &problemData, const Eigen::VectorXd &v)

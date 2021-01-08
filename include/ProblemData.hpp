@@ -5,7 +5,9 @@
 
 #include "LinearAlgebra.hpp"
 #include "Polynomial.hpp"
+#ifdef __BUILD_WITH_MATLAB__
 #include "MATLAB.hpp"
+#endif //__BUILD_WITH_MATLAB__
 
 namespace SPOPT {
 
@@ -71,9 +73,11 @@ namespace SPOPT {
             bool enableScaling;
             bool enableGradientConstraint;
             bool enableGradientConstraintType2;
-            bool enableObjValueBound;
+            bool enableLowerBound;
             double lowerBoundConstant;
+            bool enableUpperBound;
             double upperBoundConstant;
+            double scalingFactor;
 
             /* Other data to be constructed from the function `ConstructSDP` */
 
@@ -91,6 +95,8 @@ namespace SPOPT {
             Eigen::SparseMatrix<double> A;
             Eigen::SparseVector<double> c;
             Eigen::VectorXd b;
+
+            std::vector<int> sq2Cols;
 
             double originalBNorm, originalCNorm;
 

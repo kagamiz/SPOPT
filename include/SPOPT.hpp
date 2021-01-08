@@ -6,5 +6,7 @@
 #include "ProblemData.hpp"
 #include "DualLagrangianSolver.hpp"
 #include "HSDESolver.hpp"
+#include "MOSEKSolver.hpp"
+#include "SCSSolver.hpp"
 
 #endif //__SPOPT_HPP__

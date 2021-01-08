@@ -22,6 +22,7 @@ namespace SPOPT {
             double dualTolerance;
             double gapTolerance;
             int reportFrequency;
+            int iterationLimit;
     };
 
     class Solver {
@@ -30,7 +31,7 @@ namespace SPOPT {
             // TODO: error handling
             virtual void LoadConfig(std::string fileName);
 
-            void Solve(const ProblemData &problemData);
+            virtual void Solve(const ProblemData &problemData);
             void EnumerateStationaryPoints(const ProblemData &problemData);
 
             virtual ~Solver(){};
@@ -40,16 +41,16 @@ namespace SPOPT {
             void ShowHeader();
             void ShowIterInfo(int iterID, const ProblemData &problemData, Eigen::VectorXd &v);
 
-            virtual void SetUpFrom(const ProblemData &problemData) = 0;
-            virtual Eigen::VectorXd ConstructInitialPoint(const ProblemData &problemData) = 0;
-            virtual Eigen::VectorXd ApplyFixedPointFunction(const ProblemData &problemData, const Eigen::VectorXd &v) = 0;
-            virtual void UpdateParameter(const ProblemData &problemData, const Eigen::VectorXd &v) = 0;
+            virtual void SetUpFrom(const ProblemData &problemData) {}
+            virtual Eigen::VectorXd ConstructInitialPoint(const ProblemData &problemData) { return Eigen::VectorXd::Zero(1); }
+            virtual Eigen::VectorXd ApplyFixedPointFunction(const ProblemData &problemData, const Eigen::VectorXd &v) { return Eigen::VectorXd::Zero(1); }
+            virtual void UpdateParameter(const ProblemData &problemData, const Eigen::VectorXd &v) {}
 
-            virtual double GetPrimalInfeasibility(const ProblemData &problemData, const Eigen::VectorXd &v) = 0;
-            virtual double GetDualInfeasibility(const ProblemData &problemData, const Eigen::VectorXd &v) = 0;
-            virtual double GetPrimalObjValue(const ProblemData &problemData, const Eigen::VectorXd &v) = 0;
-            virtual double GetDualObjValue(const ProblemData &problemData, const Eigen::VectorXd &v) = 0;
-            virtual double GetGap(const ProblemData &problemData, const Eigen::VectorXd &v) = 0;
+            virtual double GetPrimalInfeasibility(const ProblemData &problemData, const Eigen::VectorXd &v) { return 0; }
+            virtual double GetDualInfeasibility(const ProblemData &problemData, const Eigen::VectorXd &v) { return 0; }
+            virtual double GetPrimalObjValue(const ProblemData &problemData, const Eigen::VectorXd &v) { return 0; }
+            virtual double GetDualObjValue(const ProblemData &problemData, const Eigen::VectorXd &v) { return 0; }
+            virtual double GetGap(const ProblemData &problemData, const Eigen::VectorXd &v) { return 0; }
             
             inline const Eigen::SparseMatrix<double> &MatrixA(const ProblemData &problemData) { return problemData.A; }
 
@@ -60,14 +61,20 @@ namespace SPOPT {
             inline const double originalCNorm(const ProblemData &problemData) { return problemData.originalCNorm; }
             
             inline const std::vector<int> &psdMatrixSizes(const ProblemData &problemData) { return problemData.psdMatrixSizes; }
+            inline const std::vector<int> &symmetricMatrixSizes(const ProblemData &problemData) { return problemData.symmetricMatrixSizes; }
 
+            inline const bool   enableScaling(const ProblemData &problemData) { return problemData.enableScaling; }
             inline const double primalScaler(const ProblemData &problemData) { return problemData.primalScaler; }
             inline const double dualScaler(const ProblemData &problemData) { return problemData.dualScaler; }
+            inline const double scalingFactor(const ProblemData &problemData) { return problemData.scalingFactor; }
+
+            inline const std::vector<int> &sq2Cols(const ProblemData &problemData) { return problemData.sq2Cols; }
             inline const Eigen::VectorXd &VectorD(const ProblemData &problemData) { return problemData.D; }
             inline const Eigen::VectorXd &VectorE(const ProblemData &problemData) { return problemData.E; }
 
             YAML::Node solverConfig;
             Parameter basicParam;
+            double elapsedTime;
     };
 }
 #endif //__SOLVER_HPP__

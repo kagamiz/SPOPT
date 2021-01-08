@@ -13,10 +13,12 @@ namespace SPOPT {
         YAML::Node problemDataConfig = YAML::LoadFile(fileName);
 
         enableScaling                 = problemDataConfig["enableScaling"].as<bool>(true);
+        scalingFactor                 = problemDataConfig["scalingFactor"].as<double>(5.0);
         enableGradientConstraint      = problemDataConfig["enableGradientConstraint"].as<bool>(false);
         enableGradientConstraintType2 = problemDataConfig["enableGradientConstraintType2"].as<bool>(false);
-        enableObjValueBound           = problemDataConfig["enableObjValueBound"].as<bool>(false);
+        enableLowerBound              = problemDataConfig["enableLowerBound"].as<bool>(false);
         lowerBoundConstant            = problemDataConfig["lowerBoundConstant"].as<double>(0.0);
+        enableUpperBound              = problemDataConfig["enableUpperBound"].as<bool>(false);
         upperBoundConstant            = problemDataConfig["upperBoundConstant"].as<double>(0.0);
 
         objectiveFunction.LoadFromFile(problemDataConfig["objectiveFunctionFile"].as<std::string>("examples/affine.txt"));
@@ -78,8 +80,8 @@ namespace SPOPT {
         }
         _ConstructNewConstraints();
         _ConstructTermMap();
-        _ConstructVectorB();
         _ConstructMatrixA();
+        _ConstructVectorB();
         _ConstructVectorC();
         _ConstructScalingData();
     }
@@ -104,6 +106,14 @@ namespace SPOPT {
         std::vector<ConstraintType>        constraintTypes;
         std::vector<Polynomial>            unpartitionedConstraints;
         std::vector<ConstraintType>        unpartitionedConstraintTypes;
+
+        if (enableLowerBound) {
+            originalInequalityConstraints.emplace_back(objectiveFunction - Monomial(lowerBoundConstant));
+        }
+
+        if (enableUpperBound) {
+            originalInequalityConstraints.emplace_back(-(objectiveFunction - Monomial(upperBoundConstant)));
+        }
 
         std::vector<Polynomial> tmpPolys;
         tmpPolys.insert(tmpPolys.end(), originalEqualityConstraints.begin(), originalEqualityConstraints.end());
@@ -134,11 +144,6 @@ namespace SPOPT {
                 constraints.emplace_back(originalConstraint);
                 constraintTypes.emplace_back(i < originalEqualityConstraints.size() ? ConstraintType::EqualityConstraint : ConstraintType::InequalityConstraint);
             }
-        }
-
-        if (enableObjValueBound) {
-            constraints.emplace_back(objectiveFunction);
-            constraintTypes.emplace_back(ConstraintType::BoundConstraint);
         }
 
         int maxDegree = objectiveFunction.degree;
@@ -587,7 +592,7 @@ namespace SPOPT {
 
     void ProblemData::_ConstructVectorB()
     {
-        b.setZero(termToInteger.size());
+        b.setZero(A.rows());
 
         for (auto monomial : objectiveFunction.monomials) {
             b(termToInteger[monomial.first]) = monomial.second;
@@ -598,7 +603,7 @@ namespace SPOPT {
 
     void ProblemData::_ConstructMatrixA()
     {
-        int rowNumOfA = termToInteger.size();
+        int rowNumOfA = termToInteger.size() + (enableLowerBound) + (enableUpperBound);
         int colNumOfA = 0;
 
         int maxSize = 0;
@@ -630,7 +635,7 @@ namespace SPOPT {
         // add colNum of A_2
         for (auto &convertedTermSet : convertedTermSets) {
             int sz = convertedTermSet.size();
-            colNumOfA += sz * sz;
+            colNumOfA += sz * (sz + 1) / 2;
             psdMatrixSizes.emplace_back(sz);
         }
         // add colNum of A_3
@@ -638,7 +643,7 @@ namespace SPOPT {
             int sz = convertedIndexSets[groupIDs[i]].size();
             int polyDeg = constraints[i].degree;
             int freeDeg = hierarchyDegree - (polyDeg + 1) / 2;
-            colNumOfA += C[sz + freeDeg][freeDeg] * C[sz + freeDeg][freeDeg];
+            colNumOfA += C[sz + freeDeg][freeDeg] * (C[sz + freeDeg][freeDeg] + 1) / 2;
 
             if (i < convertedInequalityConstraints.size()) {
                 psdMatrixSizes.emplace_back(C[sz + freeDeg][freeDeg]);
@@ -655,11 +660,11 @@ namespace SPOPT {
         tripletList.emplace_back(termToInteger[Term({})], 0, 1);
 
         int leftmostPosition = 1;
-
+        double sq2 = sqrt(2);
         for (int i = 0; i < convertedTermSets.size(); i++) {
             int sz = convertedTermSets[i].size();
             for (int j = 0; j < sz; j++) {
-                for (int k = 0; k < sz; k++) {
+                for (int k = j; k < sz; k++) {
                     Term t1 = convertedTermSets[i][j];
                     Term t2 = convertedTermSets[i][k];
                     Term merged;
@@ -673,7 +678,8 @@ namespace SPOPT {
                         }
                     }
                     int id = termToInteger[merged];
-                    tripletList.emplace_back(id, leftmostPosition, 1);
+                    tripletList.emplace_back(id, leftmostPosition, 1 * (j != k ? sq2 : 1));
+                    if (j != k) sq2Cols.emplace_back(leftmostPosition);
                     leftmostPosition++;
                 }
             }
@@ -685,7 +691,7 @@ namespace SPOPT {
             int polyDeg = constraints[pt].degree;
 
             for (int j = 0; j < sz; j++) {
-                for (int k = 0; k < sz; k++) {
+                for (int k = j; k < sz; k++) {
                     Term t1 = convertedTermSets[i][j];
                     Term t2 = convertedTermSets[i][k];
                     if (t1.size() > hierarchyDegree - (polyDeg + 1) / 2 || t2.size() > hierarchyDegree - (polyDeg + 1) / 2) continue;
@@ -716,8 +722,9 @@ namespace SPOPT {
                         }
 
                         int id = termToInteger[merged];
-                        tripletList.emplace_back(id, leftmostPosition, coef);
+                        tripletList.emplace_back(id, leftmostPosition, coef * (j != k ? sq2 : 1));
                     }
+                    if (j != k) sq2Cols.emplace_back(leftmostPosition);
                     leftmostPosition++;
                 }
             }
@@ -756,41 +763,42 @@ namespace SPOPT {
                 // calculate row norms and col norms
                 for (int i = 0; i < A.outerSize(); i++) {
                     for (Eigen::SparseMatrix<double>::InnerIterator it(A, i); it; ++it) {
-                        //Dt[it.row()] = std::max(Dt[it.row()], std::abs(it.value()));
-                        //Et[it.col()] = std::max(Et[it.col()], std::abs(it.value()));
-                        Dt[it.row()] += it.value() * it.value();
-                        Et[it.col()] += it.value() * it.value();
+                        Dt[it.row()] = std::max(Dt[it.row()], std::abs(it.value()));
+                        Et[it.col()] = std::max(Et[it.col()], std::abs(it.value()));
+                        //Dt[it.row()] += it.value() * it.value();
+                        //Et[it.col()] += it.value() * it.value();
                     }
                 }
+
+                for (int i = 0; i < A.cols(); i++) {
+                    Et[i] = std::clamp(sqrt(Et[i]), scalingMin / 10, scalingMax);
+                    if (Et[i] < scalingMin) Et[i] = 1.0;
+                }
+
+                for (int i = 0; i < A.rows(); i++) {
+                    Dt[i] = std::clamp(sqrt(Dt[i]), scalingMin / 10, scalingMax);
+                    if (Dt[i] < scalingMin) Dt[i] = 1.0;
+                }
+                /*
+                for (int i = 0; i < A.cols(); i++) {
+                    Et[i] = Et[i] * A.cols() / A.rows();
+                }
+                */
 
                 // mean of E across each cone
                 int leftmostPosition = 1;
                 for (auto matSize : psdMatrixSizes) {
                     double sum = 0;
-                    for (int i = 0; i < matSize * matSize; i++) {
+                    for (int i = 0; i < matSize * (matSize + 1) / 2; i++) {
                         sum += Et[leftmostPosition + i];
                     }
                     sum /= (matSize * matSize);
 
-                    for (int i = 0; i < matSize * matSize; i++) {
+                    for (int i = 0; i < matSize * (matSize + 1) / 2; i++) {
                         Et[leftmostPosition + i] = sum;
                     }
 
-                    leftmostPosition += matSize * matSize;
-                }
-
-                for (int i = 0; i < A.cols(); i++) {
-                    Et[i] = Et[i] * A.cols() / A.rows();
-                }
-
-                for (int i = 0; i < A.cols(); i++) {
-                    Et[i] = std::clamp(sqrt(sqrt(Et[i])), scalingMin / 10, scalingMax);
-                    if (Et[i] < scalingMin) Et[i] = 1.0;
-                }
-
-                for (int i = 0; i < A.rows(); i++) {
-                    Dt[i] = std::clamp(sqrt(sqrt(Dt[i])), scalingMin / 10, scalingMax);
-                    if (Dt[i] < scalingMin) Dt[i] = 1.0;
+                    leftmostPosition += matSize * (matSize + 1) / 2;
                 }
 
                 // scale the rows and cols with Dt and Et
@@ -846,14 +854,18 @@ namespace SPOPT {
                 //colNormMean += colInfNorms[i] / A.cols();
             }
 
+            for (int i = 0; i < A.outerSize(); i++) {
+                for (Eigen::SparseMatrix<double>::InnerIterator it(A, i); it; ++it) {
+                    it.valueRef() *= scalingFactor;
+                }
+            }
+
             // scale b
             for (int i = 0; i < A.rows(); i++) {
                 b(i) *= D[i];
             }
             dualScaler = colNormMean / std::max(b.norm(), 1e-6);
-            for (int i = 0; i < A.rows(); i++) {
-                b(i) *= dualScaler;
-            }
+            b *= dualScaler * scalingFactor;
 
             // scale c
             for (Eigen::SparseVector<double>::InnerIterator it(c); it; ++it) {
@@ -861,7 +873,7 @@ namespace SPOPT {
             }
 
             primalScaler = rowNormMean / std::max(c.norm(), 1e-6);
-            c *= primalScaler;
+            c *= primalScaler * scalingFactor;
         }
     }
 
@@ -914,6 +926,7 @@ namespace SPOPT {
 
     void ProblemData::OutputMatFile(std::string fileName)
     {
+        #ifdef __BUILD_WITH_MATLAB__
         MATFile *pmat = matOpen(fileName.c_str(), "w");
         if (pmat == NULL) {
             std::cerr << "Error creating file " << fileName << std::endl;
@@ -933,10 +946,10 @@ namespace SPOPT {
         int IndOffset = 1;
         int freeConeSize = 1;
         for (int i = 0; i < psdMatrixSizes.size(); i++) {
-            IndOffset += psdMatrixSizes[i] * psdMatrixSizes[i];
+            IndOffset += psdMatrixSizes[i] * (psdMatrixSizes[i] + 1) / 2;
         }
         for (int i = 0; i < symmetricMatrixSizes.size(); i++) {
-            int symSize = symmetricMatrixSizes[i] * symmetricMatrixSizes[i];
+            int symSize = symmetricMatrixSizes[i] * (symmetricMatrixSizes[i] + 1) / 2;
             for (int j = 0; j < symSize; j++) {
                 AColPerm[ctr] = IndOffset;
                 IndOffset++; ctr++;
@@ -945,23 +958,35 @@ namespace SPOPT {
         }
         IndOffset = 1;
         for (int i = 0; i < psdMatrixSizes.size(); i++) {
-            int psdSize = psdMatrixSizes[i] * psdMatrixSizes[i];
+            int psdSize = psdMatrixSizes[i] * (psdMatrixSizes[i] + 1) / 2;
             for (int j = 0; j < psdSize; j++) {
                 AColPerm[ctr] = IndOffset;
                 IndOffset++; ctr++;
             }
         }
 
+        Eigen::SparseMatrix<double> A2 = A;
+        int ind2 = 0;
+        for (int i = 0; i < A2.outerSize(); i++) {
+            for (Eigen::SparseMatrix<double>::InnerIterator it(A2, i); it; ++it) {
+                while (ind2 < sq2Cols.size() && sq2Cols[ind2] < it.col()) ind2++;
+                double scalingCoef = (ind2 < sq2Cols.size() && sq2Cols[ind2] == it.col()) ? sqrt(0.5) : 1;
+                it.valueRef() = it.value() / (scalingCoef * D[it.row()] * E[it.col()] * scalingFactor);
+            }
+        }
+        
+        std::vector<Eigen::Triplet<double>> tripletList;
         int nzCnt = 0;
-        for (int i = 0; i < A.outerSize(); i++) {
+        for (int i = 0; i < A2.outerSize(); i++) {
             jc[i] = nzCnt;
-            for (Eigen::SparseMatrix<double>::InnerIterator it(A, AColPerm[i]); it; ++it) {
-                pr[nzCnt] = it.value() / (D[it.row()] * E[it.col()]);
+            for (Eigen::SparseMatrix<double>::InnerIterator it(A2, AColPerm[i]); it; ++it) {
+                pr[nzCnt] = it.value();
                 ir[nzCnt] = it.row();
                 nzCnt++;
             }
         }
         jc[A.outerSize()] = nzCnt;
+        
         if (matPutVariable(pmat, "A", matrixA) != 0) {
             std::cerr << __FILE__ << " : " << "Error using matPutvariable on line " << __LINE__ << std::endl;
             exit(EXIT_FAILURE);
@@ -970,7 +995,7 @@ namespace SPOPT {
 
         mxArray *vectorB = mxCreateDoubleMatrix(b.size(), 1, mxREAL);
         for (int i = 0; i < b.size(); i++) {
-             mxGetDoubles(vectorB)[i] = (double)b[i] / (D[i] * dualScaler);
+             mxGetDoubles(vectorB)[i] = (double)b[i] / (D[i] * dualScaler * scalingFactor);
         }
         if (matPutVariable(pmat, "b", vectorB) != 0) {
             std::cerr << __FILE__ << " : " << "Error using matPutvariable on line " << __LINE__ << std::endl;
@@ -986,7 +1011,7 @@ namespace SPOPT {
         for (int i = 0; i < c.outerSize(); i++) {
             jc[i] = nzCnt;
             for (Eigen::SparseVector<double>::InnerIterator it(c, i); it; ++it) {
-                pr[nzCnt] = it.value() / (E[it.row()] * primalScaler);
+                pr[nzCnt] = it.value() / (E[it.row()] * primalScaler * scalingFactor);
                 ir[nzCnt] = it.row();
                 nzCnt++;
             }
@@ -1023,6 +1048,7 @@ namespace SPOPT {
             std::cerr << "Error closing file " << fileName << std::endl;
             exit(EXIT_FAILURE);
         }
+        #endif //__BUILD_WITH_MATLAB__
     }
 
     void ProblemData::_GenerateSolutions(int cur, std::vector<std::vector<std::vector<double>>> &solutionCandidates, std::vector<bool> &done, std::vector<double> &tmp, std::vector<Eigen::VectorXd> &answers)
