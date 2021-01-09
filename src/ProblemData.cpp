@@ -84,6 +84,19 @@ namespace SPOPT {
         _ConstructVectorB();
         _ConstructVectorC();
         _ConstructScalingData();
+
+        std::map<int, int> PSDSize;
+        for (auto psdMat : psdMatrixSizes) {
+            if (PSDSize.find(psdMat) != PSDSize.end()) PSDSize[psdMat]++;
+            else PSDSize[psdMat] = 1;
+        }
+
+        std::cout << "semidefinite variables :" << std::endl;
+        for (auto it = PSDSize.begin(); it != PSDSize.end(); it++) {
+            auto [p, q] = *it;
+            std::cout << "(" << p << "," << q << ")" << std::endl;
+        }
+        std::cout << "Numer of LMI : " << A.rows() << std::endl;
     }
 
     void ProblemData::_AddGradientConstraints()
