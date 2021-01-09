@@ -100,7 +100,7 @@ namespace SPOPT {
         d->stgs->eps                   = std::min({basicParam.primalTolerance, basicParam.dualTolerance, basicParam.gapTolerance});
         d->stgs->alpha                 = SCSParam.alpha;
         d->stgs->cg_rate               = CG_RATE;
-        d->stgs->verbose               = true;
+        d->stgs->verbose               = false;
         d->stgs->warm_start            = false;
         d->stgs->acceleration_lookback = (basicParam.enableAndersonAcceleration ? basicParam.AAMemoryLength : 0);
 
@@ -125,6 +125,9 @@ namespace SPOPT {
         SetUpFrom(problemData);
         sol = (ScsSolution *)scs_calloc(1, sizeof(ScsSolution));
         scs(d, k, sol, &info);
+
+        std::cout << "time : " <<  (info.setup_time + info.solve_time) * 1000 << ", opt : " << info.pobj << ", err :" << std::max({info.res_pri, info.res_dual, info.rel_gap})  << ", ite : " << info.iter << std::endl;
+
         scs_free_data(d, k);
         scs_free_sol(sol);
     }   
