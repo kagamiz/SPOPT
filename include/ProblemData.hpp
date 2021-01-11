@@ -77,10 +77,14 @@ namespace SPOPT {
             bool enableGradientConstraint;
             bool enableGradientConstraintType2;
             bool enableLowerBound;
+            bool perturbObjectiveFunction;
+            bool addVariableNonnegativity;
+            bool addFirstOrderFullMomentMatrix;
             double lowerBoundConstant;
             bool enableUpperBound;
             double upperBoundConstant;
             double scalingFactor;
+            unsigned int RNGSeed;
 
             /* Other data to be constructed from the function `ConstructSDP` */
 

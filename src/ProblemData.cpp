@@ -20,6 +20,12 @@ namespace SPOPT {
         lowerBoundConstant            = problemDataConfig["lowerBoundConstant"].as<double>(0.0);
         enableUpperBound              = problemDataConfig["enableUpperBound"].as<bool>(false);
         upperBoundConstant            = problemDataConfig["upperBoundConstant"].as<double>(0.0);
+        perturbObjectiveFunction      = problemDataConfig["perturbObjectiveFunction"].as<bool>(false);
+        addVariableNonnegativity      = problemDataConfig["addVariableNonnegativity"].as<bool>(false);
+        addFirstOrderFullMomentMatrix = problemDataConfig["addFirstOrderFullMomentMatrix"].as<bool>(false);
+        RNGSeed                       = problemDataConfig["RNGSeed"].as<unsigned int>(0);
+
+        srand(RNGSeed);
 
         objectiveFunction.LoadFromFile(problemDataConfig["objectiveFunctionFile"].as<std::string>("examples/affine.txt"));
 
@@ -75,9 +81,27 @@ namespace SPOPT {
 
     void ProblemData::ConstructSDP()
     {
+        if (perturbObjectiveFunction) {
+            int n = objectiveFunction.maxIndex + 1;
+            Eigen::VectorXd r = Eigen::VectorXd::Random(n);
+            r /= r.norm();
+            r /= 10.0;
+            for (int i = 0; i < n; i++) {
+                objectiveFunction += Monomial(Term({i}), r(i), /*sorted=*/true);
+            }
+        }
+
         if (enableGradientConstraintType2) {
             _AddGradientConstraints();
         }
+
+        if (addVariableNonnegativity) {
+            int n = objectiveFunction.maxIndex + 1;
+            for (int i = 0; i < n; i++) {
+                originalInequalityConstraints.emplace_back(Term({i}));
+            }
+        }
+
         _ConstructNewConstraints();
         _ConstructTermMap();
         _ConstructMatrixA();
@@ -96,7 +120,7 @@ namespace SPOPT {
             auto [p, q] = *it;
             std::cout << "(" << p << "," << q << ")" << std::endl;
         }
-        std::cout << "Numer of LMI : " << A.rows() << std::endl;
+        std::cout << "Number of the LMI : " << A.rows() << std::endl;
     }
 
     void ProblemData::_AddGradientConstraints()
@@ -601,6 +625,19 @@ namespace SPOPT {
         for (int i = 0; i < terms.size(); i++) {
             termToInteger[terms[i].second] = i;
         }
+
+        if (addFirstOrderFullMomentMatrix) {
+            int n = objectiveFunction.maxIndex + 1;
+            int sz = termToInteger.size();
+            for (int i = 0; i < n; i++) {
+                for (int j = i + 1; j < n; j++) {
+                    if (termToInteger.find({i, j}) == termToInteger.end()) {
+                        termToInteger[{i, j}] = sz++;
+                    }
+                }
+            }
+        }
+
     }
 
     void ProblemData::_ConstructVectorB()
@@ -616,7 +653,7 @@ namespace SPOPT {
 
     void ProblemData::_ConstructMatrixA()
     {
-        int rowNumOfA = termToInteger.size() + (enableLowerBound) + (enableUpperBound);
+        int rowNumOfA = termToInteger.size();
         int colNumOfA = 0;
 
         int maxSize = 0;
@@ -646,6 +683,11 @@ namespace SPOPT {
        
         colNumOfA += 1; // colNum of A_1
         // add colNum of A_2
+        if (addFirstOrderFullMomentMatrix) {
+            int n = objectiveFunction.maxIndex + 1;
+            colNumOfA += (n + 1) * (n + 2) / 2;
+            psdMatrixSizes.emplace_back(n + 1);
+        }
         for (auto &convertedTermSet : convertedTermSets) {
             int sz = convertedTermSet.size();
             colNumOfA += sz * (sz + 1) / 2;
@@ -674,6 +716,18 @@ namespace SPOPT {
 
         int leftmostPosition = 1;
         double sq2 = sqrt(2);
+        if (addFirstOrderFullMomentMatrix) {
+            int n = objectiveFunction.maxIndex + 1;
+            for (int i = 0; i <= n; i++) {
+                for (int j = i; j <= n; j++) {
+                    Term t = (i == 0 ? (j == 0 ? Term({}) : Term({j - 1})) : Term({i - 1, j - 1}));
+                    int id = termToInteger[t];
+                    tripletList.emplace_back(id, leftmostPosition, 1 * (i != j ? sq2 : 1));
+                    if (i != j) sq2Cols.emplace_back(leftmostPosition);
+                    leftmostPosition++;
+                }
+            }
+        }
         for (int i = 0; i < convertedTermSets.size(); i++) {
             int sz = convertedTermSets[i].size();
             for (int j = 0; j < sz; j++) {
@@ -1115,6 +1169,29 @@ namespace SPOPT {
         using Point = std::vector<double>;
         std::vector<std::vector<Point>> solutionCandidates(convertedIndexSets.size());
 
+        if (addFirstOrderFullMomentMatrix) {
+            Eigen::MatrixXd MomentMatrix = Eigen::MatrixXd::Zero(n + 1, n + 1);
+            for (int i = 0; i <= n; i++) {
+                for (int j = i; j <= n; j++) {
+                    Term t = (i == 0 ? (j == 0 ? Term({}) : Term({j - 1})) : Term({i - 1, j - 1}));
+                    MomentMatrix(i, j) = MomentMatrix(j, i) = v[termToInteger[t]];
+                }
+            }
+            std::cout << MomentMatrix << std::endl;
+            Eigen::ColPivHouseholderQR<Eigen::MatrixXd> QRDecomp(MomentMatrix);
+            QRDecomp.setThreshold(1e-5);
+            std::cout << "rank(M_{n,1}(y)) = " << QRDecomp.rank() << std::endl;
+            if (QRDecomp.rank() == 1) {
+                std::vector<double> res(n, 0);
+                for (int i = 1; i <= n; i++) {
+                    res[i - 1] = MomentMatrix(0, i);
+                }
+                ret.emplace_back(res);
+                return ret;
+            }
+            std::cout << "rank(M_{n,1})(y) > 1, so we'll continue the ordinary procedure." << std::endl;
+        }
+
         for (int i = 0; i < convertedIndexSets.size(); i++) {
             int originalVariableNum = std::lower_bound(convertedIndexSets[i].begin(), convertedIndexSets[i].end(), n) - convertedIndexSets[i].begin();
             int sz = 0;
@@ -1291,6 +1368,7 @@ namespace SPOPT {
 
     void ProblemData::Analyze(std::vector<double> &x)
     {
+        std::cout << std::resetiosflags(std::ios_base::floatfield);
         std::cout << "(";
         for (int i = 0; i < x.size(); i++) {
             std::cout << x[i];
@@ -1303,6 +1381,13 @@ namespace SPOPT {
         }
 
         std::cout << "f(x) = " << objectiveFunction.Evaluate(x) << std::endl;
+
+        std::cout << "||x|| = ";
+        double norm = 0;
+        for (int i = 0; i < x.size(); i++) norm += x[i] * x[i];
+        std::cout << sqrt(norm) << std::endl;
+
+
         double nablaFNorm = 0;
 
         for (int i = 0; i < x.size(); i++) {
@@ -1310,5 +1395,9 @@ namespace SPOPT {
             nablaFNorm += dx_i * dx_i;
         }
         std::cout << "||\\nabla f|| = " << sqrt(nablaFNorm) << std::endl;
+
+        double innerProd = 0;
+        for (int i = 0; i < x.size(); i++) innerProd += x[i] * objectiveFunction.DifferentiateBy(i).Evaluate(x);
+        std::cout << "cos(\\nabla f, x) = " << innerProd / (sqrt(norm) * sqrt(nablaFNorm)) << std::endl;
     }
 }
