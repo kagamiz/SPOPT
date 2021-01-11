@@ -904,7 +904,7 @@ namespace SPOPT {
 
     void ProblemData::OutputJuliaFile(std::string fileName)
     {
-        std::ostream &os = (fileName == "" ? *(new std::ofstream(fileName)) : std::cout);
+        std::ostream &os = (fileName != "" ? *(new std::ofstream(fileName)) : std::cout);
 
         os << "using CPUTime;" << std::endl;
         os << "using TSSOS;" << std::endl;
