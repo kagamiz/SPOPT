@@ -35,7 +35,7 @@ namespace SPOPT {
         std::cout << std::resetiosflags(std::ios_base::floatfield);
     }
 
-    void Solver::Solve(const ProblemData &problemData)
+    std::vector<double> Solver::Solve(const ProblemData &problemData)
     {
         SetUpFrom(problemData);
         int iterationCounter = 0;
@@ -87,6 +87,8 @@ namespace SPOPT {
             free(aacur);
             free(aaprv);
         }
+
+        return std::vector<double>();
     }
 
     bool Solver::IsTerminationCriterionSatisfied(const ProblemData &problemData, const Eigen::VectorXd &v)

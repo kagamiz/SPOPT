@@ -921,7 +921,12 @@ namespace SPOPT {
         }
 
         os << "@polyvar x[1:" << maxIndex + 1 << "];" << std::endl;
-        os << "f=" << objectiveFunction.ToString(/* oneIndexed = */true) << ";" << std::endl;
+        //os << "f=" << objectiveFunction.ToString(/* oneIndexed = */true) << ";" << std::endl;
+        os << "f=x[1];" << std::endl;
+        for (auto &monomial : objectiveFunction.monomials) {
+            os << "f+=" << Monomial(monomial.first, monomial.second, /* sorted = */true).ToString(/* oneIndexed = */true, /* withSign = */false) << ";" << std::endl;
+        }
+        os << "f-=x[1];" << std::endl;
         os << "pop=[f];" << std::endl;
         for (auto convertedInequalityConstraint : convertedInequalityConstraints) {
             os << "push!(pop, " << convertedInequalityConstraint.ToString(/* oneIndexed = */true) << ");" << std::endl;
@@ -1064,11 +1069,13 @@ namespace SPOPT {
         #endif //__BUILD_WITH_MATLAB__
     }
 
-    void ProblemData::_GenerateSolutions(int cur, std::vector<std::vector<std::vector<double>>> &solutionCandidates, std::vector<bool> &done, std::vector<double> &tmp, std::vector<Eigen::VectorXd> &answers)
+    void ProblemData::_GenerateSolutions(int cur, std::vector<std::vector<std::vector<double>>> &solutionCandidates, std::vector<bool> &done, std::vector<double> &tmp, std::vector<std::vector<double>> &answers)
     {
         if (cur == solutionCandidates.size()) {
-            if (accumulate(done.begin(), done.end(), 0) == objectiveFunction.maxIndex) {
-                answers.emplace_back(Eigen::VectorXd::Map(tmp.data(), tmp.size()));
+            bool ok = true;
+            for (int i = 0; i < done.size(); i++) ok &= done[i];
+            if (ok) {
+                answers.emplace_back(tmp);
             }
             return;
         }
@@ -1099,11 +1106,11 @@ namespace SPOPT {
         }
     }
 
-    std::vector<Eigen::VectorXd> ProblemData::ExtractSolutionsFrom(std::vector<double> &v)
+    std::vector<std::vector<double>> ProblemData::ExtractSolutionsFrom(std::vector<double> &v)
     {
-        int n = objectiveFunction.maxIndex;
+        int n = objectiveFunction.maxIndex + 1;
 
-        std::vector<Eigen::VectorXd> ret;
+        std::vector<std::vector<double>> ret;
 
         using Point = std::vector<double>;
         std::vector<std::vector<Point>> solutionCandidates(convertedIndexSets.size());
@@ -1183,7 +1190,7 @@ namespace SPOPT {
                 for (int j = 0; j < colNumOfV; ) {
                     if (ptr == newOrd.size()) {
                         std::cout << "[ExtractSolution] [Error] making column echelon form failed" << std::endl;
-                        return std::vector<Eigen::VectorXd>();
+                        return std::vector<std::vector<double>>();
                     }
 
                     int bigCol = -1;
@@ -1203,7 +1210,7 @@ namespace SPOPT {
                     if (tmpTerms[ptr].size() == hierarchyDegree) {
                         std::cout << "[ExtractSolution] [Error] degree of the monomial is too large" << std::endl;
                         std::cout << V << std::endl;
-                        return std::vector<Eigen::VectorXd>();
+                        return std::vector<std::vector<double>>();
                     }
 
                     baseTerms.emplace_back(tmpTerms[ptr]);
@@ -1255,7 +1262,7 @@ namespace SPOPT {
             if (NSchur.matrixT().isUpperTriangular(1e-5) == false) {
                 std::cout << "[ExtractSolution] [Error] Schur Decompostion contains a complex number (i = " << i << ")" << std::endl;
                 std::cout << NSchur.matrixT() << std::endl;
-                return std::vector<Eigen::VectorXd>();
+                return std::vector<std::vector<double>>();
             }
 
             solutionCandidates[i].resize(colNumOfV);
@@ -1280,5 +1287,28 @@ namespace SPOPT {
         _GenerateSolutions(0, solutionCandidates, done, tmp, ret);
 
         return ret;
+    }
+
+    void ProblemData::Analyze(std::vector<double> &x)
+    {
+        std::cout << "(";
+        for (int i = 0; i < x.size(); i++) {
+            std::cout << x[i];
+            if (i + 1 == x.size()) {
+                std::cout << ")" << std::endl;
+            }
+            else {
+                std::cout << ", ";
+            }
+        }
+
+        std::cout << "f(x) = " << objectiveFunction.Evaluate(x) << std::endl;
+        double nablaFNorm = 0;
+
+        for (int i = 0; i < x.size(); i++) {
+            double dx_i = objectiveFunction.DifferentiateBy(i).Evaluate(x);
+            nablaFNorm += dx_i * dx_i;
+        }
+        std::cout << "||\\nabla f|| = " << sqrt(nablaFNorm) << std::endl;
     }
 }

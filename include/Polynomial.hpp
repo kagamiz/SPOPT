@@ -253,6 +253,15 @@ namespace SPOPT {
                 return ret;
             }
 
+            Polynomial DifferentiateBy(int ind)
+            {
+                Polynomial ret = Monomial();
+                for (auto &monomial : this->monomials) {
+                    ret = ret + Monomial(monomial.first, monomial.second).DifferentiateBy(ind);
+                }
+                return ret;
+            }
+
             std::string ToString(bool oneIndexed = false)
             {
                 std::string res;

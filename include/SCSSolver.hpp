@@ -23,7 +23,7 @@ namespace SPOPT {
             SCSSolver(std::string fileName);
 
             void LoadConfig(std::string fileName);
-            void Solve(const ProblemData &problemData);
+            std::vector<double> Solve(const ProblemData &problemData);
 
         private:
             void SetUpFrom(const ProblemData &problemData);

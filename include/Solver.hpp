@@ -31,7 +31,7 @@ namespace SPOPT {
             // TODO: error handling
             virtual void LoadConfig(std::string fileName);
 
-            virtual void Solve(const ProblemData &problemData);
+            virtual std::vector<double> Solve(const ProblemData &problemData);
             void EnumerateStationaryPoints(const ProblemData &problemData);
 
             virtual ~Solver(){};

@@ -38,6 +38,9 @@ namespace SPOPT {
             void ConstructSDP();
             void ShowPOP();
 
+            // check the function value and the gradient at given point
+            void Analyze(std::vector<double> &x);
+
             // Output for other solvers
             void OutputJuliaFile(std::string fileName = "");
             // Output the Matrix A, b, c, and cone information
@@ -48,7 +51,7 @@ namespace SPOPT {
 
             // returns approximate point that satisfies moment conditions by
             // an algorithm proposed by Henrion & Lasserre (2006).
-            std::vector<Eigen::VectorXd> ExtractSolutionsFrom(std::vector<double> &v);
+            std::vector<std::vector<double>> ExtractSolutionsFrom(std::vector<double> &v);
             
             friend Solver;
 
@@ -136,7 +139,7 @@ namespace SPOPT {
             std::map<Term, int> termToInteger;
 
             // auxiliary function used to extract an approximate solutions from truncated moments
-            void _GenerateSolutions(int cur, std::vector<std::vector<std::vector<double>>> &solutionCandidates, std::vector<bool> &done, std::vector<double> &tmp, std::vector<Eigen::VectorXd> &answers);
+            void _GenerateSolutions(int cur, std::vector<std::vector<std::vector<double>>> &solutionCandidates, std::vector<bool> &done, std::vector<double> &tmp, std::vector<std::vector<double>> &answers);
 };
 }
 #endif //__PROBLEM_DATA_HPP__

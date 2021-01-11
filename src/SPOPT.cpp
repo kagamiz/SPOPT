@@ -43,7 +43,21 @@ int main(int argc, char **argv)
 
         auto solverData = solvers[solverConfig["solverType"].as<std::string>("MOSEKSolver")];
         solverData->LoadConfig(solverConfigFileName);
-        solverData->Solve(problemData);
+
+        std::vector<double> tms = solverData->Solve(problemData);
+        std::ofstream ofs;
+        ofs.open("tms.txt");
+        for (auto &elem : tms) {
+            ofs << elem << std::endl;
+        }
+        ofs.close();
+
+        std::vector<std::vector<double>> sols = problemData.ExtractSolutionsFrom(tms);
+
+        std::cout << "Extracted " << sols.size() << " solution(s)." << std::endl;
+        for (auto sol : sols) {
+            problemData.Analyze(sol);
+        }
 
         for (auto it = solvers.begin(); it != solvers.end(); it++) {
             delete it->second;
@@ -75,12 +89,11 @@ int main(int argc, char **argv)
         }
         fin.close();
 
-        std::vector<Eigen::VectorXd> sols = problemData.ExtractSolutionsFrom(tms);
+        std::vector<std::vector<double>> sols = problemData.ExtractSolutionsFrom(tms);
 
         std::cout << "Extracted " << sols.size() << " solution(s)." << std::endl;
         for (auto sol : sols) {
-            std::cout << "\n";
-            std::cout << sol << std::endl;
+            problemData.Analyze(sol);
         }
     }
 

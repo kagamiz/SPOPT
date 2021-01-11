@@ -120,15 +120,22 @@ namespace SPOPT {
         k->p = (scs_float *)scs_calloc(k->psize, sizeof(scs_float));
     }
 
-    void SCSSolver::Solve(const ProblemData &problemData)
+    std::vector<double> SCSSolver::Solve(const ProblemData &problemData)
     {
         SetUpFrom(problemData);
         sol = (ScsSolution *)scs_calloc(1, sizeof(ScsSolution));
         scs(d, k, sol, &info);
 
-        std::cout << "time : " <<  (info.setup_time + info.solve_time) * 1000 << ", opt : " << info.pobj << ", err :" << std::max({info.res_pri, info.res_dual, info.rel_gap})  << ", ite : " << info.iter << std::endl;
+        std::cout << std::fixed << std::setprecision(2) << "time : " <<  (info.setup_time + info.solve_time) / 1000.0 << std::scientific << std::setprecision(2) << ", opt : " << info.pobj << ", err :" << std::max({info.res_pri, info.res_dual, info.rel_gap})  << ", ite : " << info.iter << std::endl;
+
+        std::vector<double> y(MatrixA(problemData).rows());
+        for (int i = 0; i < y.size(); i++) {
+            y[i] = sol->x[i];
+        }
 
         scs_free_data(d, k);
         scs_free_sol(sol);
+
+        return y;
     }   
 }
