@@ -167,6 +167,7 @@ namespace SPOPT {
         for (int i = 0; i < originalIndexSets.size(); i++) {
             originalIndexSets[i].emplace_back(variableNum - 1);
         }
+        objectiveFunction.maxIndex++;
     }
 
     void ProblemData::_AddMinors()
