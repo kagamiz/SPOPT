@@ -189,7 +189,7 @@ namespace SPOPT {
         std::vector<Polynomial> newConstraints(2 * n - 3);
         for (int i = 0; i < n; i++) {
             for (int j = i + 1; j < n; j++) {
-                newConstraints[i + j] += pderivatives[i] * Monomial(Term({j})) - pderivatives[j] * Monomial(Term({i}));
+                newConstraints[i + j - 1] += pderivatives[i] * Monomial(Term({j})) - pderivatives[j] * Monomial(Term({i}));
             }
         }
 
