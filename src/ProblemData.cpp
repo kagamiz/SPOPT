@@ -146,17 +146,17 @@ namespace SPOPT {
     void ProblemData::_AddGradientConstraints()
     {
         int variableNum = objectiveFunction.maxIndex + 1;
-        Polynomial LagrangianFunction = objectiveFunction;
+        //Polynomial LagrangianFunction = objectiveFunction;
         
         for (int i = 0; i < variableNum; i++) {
-            LagrangianFunction += Monomial(Term({i, i, variableNum}), 1, /* sorted = */true);
+            objectiveFunction += Monomial(Term({i, i, variableNum}), 1, /* sorted = */true);
         }
-        LagrangianFunction += Monomial(Term({variableNum}), -1, /* sorted = */true);
+        objectiveFunction += Monomial(Term({variableNum}), -1, /* sorted = */true);
 
         variableNum++;
         for (int i = 0; i < variableNum; i++) {
             Polynomial grad_i;
-            for (auto &monomial : LagrangianFunction.monomials) {
+            for (auto &monomial : objectiveFunction.monomials) {
                 Monomial dif = Monomial(monomial.first, monomial.second, /* sorted = */true).DifferentiateBy(i);
                 grad_i += dif;
             }
@@ -167,7 +167,7 @@ namespace SPOPT {
         for (int i = 0; i < originalIndexSets.size(); i++) {
             originalIndexSets[i].emplace_back(variableNum - 1);
         }
-        objectiveFunction.maxIndex++;
+        //objectiveFunction.maxIndex++;
     }
 
     void ProblemData::_AddMinors()
