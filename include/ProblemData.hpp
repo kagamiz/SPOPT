@@ -38,6 +38,8 @@ namespace SPOPT {
             void ConstructSDP();
             void ShowPOP();
 
+            double Apply(std::vector<double> &x);
+
             // check the function value and the gradient at given point
             void Analyze(std::vector<double> &x);
 
@@ -74,9 +76,10 @@ namespace SPOPT {
 
             // Options
             bool enableScaling;
-            bool enableGradientConstraint;
-            bool enableGradientConstraintType2;
+            int gradientConstraintType; // 0 : None, 1 : given in input + make as gradient constraint on minimal subtree, 2 : lagrangian type, 3 : all 2x2 minor
             bool enableLowerBound;
+            bool enableOriginalVariableNormBound;
+            double originalVariableNormBound;
             bool perturbObjectiveFunction;
             bool addVariableNonnegativity;
             bool addFirstOrderFullMomentMatrix;
@@ -118,6 +121,7 @@ namespace SPOPT {
             /* Private Member Functions */
 
             void _AddGradientConstraints();
+            void _AddMinors();
             void _ConstructNewConstraints(); // make new constraints by traversing originalJunctionTree
             void _TraverseTree(int v, int p, int &newVariableIndex,
                               std::vector<std::vector<Monomial>> &objectiveMonomials,

@@ -88,6 +88,7 @@ namespace SPOPT {
             {
                 double ret = coefficient;
                 for (auto &ind : term) {
+                    if (ind >= values.size()) return 0;
                     ret *= values[ind];
                 }
                 return ret;

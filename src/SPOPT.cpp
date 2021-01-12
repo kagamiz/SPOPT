@@ -19,6 +19,7 @@ int main(int argc, char **argv)
         ("mat,m",                       po::value<std::string>(&fileName),                  "converts problem data to a matlab format")
         ("extract,e",                   po::value<std::string>(&fileName),                  "extract solution(s) from a given truncated moment sequence")
         ("view_problem,v",                                                                  "shows the converted problem")
+        ("all_real_eigenpairs,a",       po::value<std::string>(&fileName),                  "show all real eigenpair in ascending order of the eigenvalue")
     ;
 
     po::variables_map vm;
@@ -99,6 +100,36 @@ int main(int argc, char **argv)
 
     if (vm.count("view_problem")) {
         problemData.ShowPOP();
+    }
+
+    if (vm.count("all_real_eigenpairs")) {
+        std::ifstream fin;
+        fin.open(fileName);
+        if (fin.fail()) {
+            std::cerr << "opening file " << fileName << " failed !" << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        int n, m;
+        fin >> n >> m;
+        std::vector<std::pair<double, std::vector<double>>> realEigenVectors(m);
+        for (int i = 0; i < m; i++) {
+            std::vector<double> eigenvector(n);
+            for (auto &elem : eigenvector) {
+                fin >> elem;
+            }
+            realEigenVectors.emplace_back(problemData.Apply(eigenvector), eigenvector);
+        }
+        fin.close();
+        std::sort(realEigenVectors.begin(), realEigenVectors.end());
+
+        std::cout << m << std::endl;
+        for (int i = 0; i < std::min(m, 10); i++) {
+            printf("%lf : ", realEigenVectors[i].first);
+            for (int j = 0; j < n; j++) {
+                printf("%lf, ", realEigenVectors[i].second[j]);
+            }
+            printf("\n");
+        }
     }
 
     return 0;

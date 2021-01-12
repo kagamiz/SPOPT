@@ -12,18 +12,19 @@ namespace SPOPT {
     {
         YAML::Node problemDataConfig = YAML::LoadFile(fileName);
 
-        enableScaling                 = problemDataConfig["enableScaling"].as<bool>(true);
-        scalingFactor                 = problemDataConfig["scalingFactor"].as<double>(5.0);
-        enableGradientConstraint      = problemDataConfig["enableGradientConstraint"].as<bool>(false);
-        enableGradientConstraintType2 = problemDataConfig["enableGradientConstraintType2"].as<bool>(false);
-        enableLowerBound              = problemDataConfig["enableLowerBound"].as<bool>(false);
-        lowerBoundConstant            = problemDataConfig["lowerBoundConstant"].as<double>(0.0);
-        enableUpperBound              = problemDataConfig["enableUpperBound"].as<bool>(false);
-        upperBoundConstant            = problemDataConfig["upperBoundConstant"].as<double>(0.0);
-        perturbObjectiveFunction      = problemDataConfig["perturbObjectiveFunction"].as<bool>(false);
-        addVariableNonnegativity      = problemDataConfig["addVariableNonnegativity"].as<bool>(false);
-        addFirstOrderFullMomentMatrix = problemDataConfig["addFirstOrderFullMomentMatrix"].as<bool>(false);
-        RNGSeed                       = problemDataConfig["RNGSeed"].as<unsigned int>(0);
+        enableScaling                   = problemDataConfig["enableScaling"].as<bool>(true);
+        scalingFactor                   = problemDataConfig["scalingFactor"].as<double>(5.0);
+        gradientConstraintType          = problemDataConfig["gradientConstraintType"].as<int>(0);
+        enableLowerBound                = problemDataConfig["enableLowerBound"].as<bool>(false);
+        lowerBoundConstant              = problemDataConfig["lowerBoundConstant"].as<double>(0.0);
+        enableUpperBound                = problemDataConfig["enableUpperBound"].as<bool>(false);
+        upperBoundConstant              = problemDataConfig["upperBoundConstant"].as<double>(0.0);
+        enableOriginalVariableNormBound = problemDataConfig["enableOriginalVariableBound"].as<bool>(false);
+        originalVariableNormBound       = problemDataConfig["originalVariableBound"].as<double>(0.0);
+        perturbObjectiveFunction        = problemDataConfig["perturbObjectiveFunction"].as<bool>(false);
+        addVariableNonnegativity        = problemDataConfig["addVariableNonnegativity"].as<bool>(false);
+        addFirstOrderFullMomentMatrix   = problemDataConfig["addFirstOrderFullMomentMatrix"].as<bool>(false);
+        RNGSeed                         = problemDataConfig["RNGSeed"].as<unsigned int>(0);
 
         srand(RNGSeed);
 
@@ -69,6 +70,12 @@ namespace SPOPT {
                 originalJunctionTree[v - 1].emplace_back(u - 1);
             }
         }
+        else {
+            int n = objectiveFunction.maxIndex + 1;
+            std::vector<int> allIndex(n);
+            std::iota(allIndex.begin(), allIndex.end(), 0);
+            originalIndexSets.emplace_back(allIndex);
+        }
 
         hierarchyDegree = problemDataConfig["hierarchyDegree"].as<int>((objectiveFunction.degree + 1) / 2);
     }
@@ -76,7 +83,7 @@ namespace SPOPT {
     bool ProblemData::IsUnconstrained() const
     {
         return    convertedEqualityConstraints.size() == 0 && convertedInequalityConstraints.size() == 0
-               && enableGradientConstraint == false        && enableGradientConstraintType2 == false;
+               && gradientConstraintType == 0;
     }
 
     void ProblemData::ConstructSDP()
@@ -91,15 +98,26 @@ namespace SPOPT {
             }
         }
 
-        if (enableGradientConstraintType2) {
-            _AddGradientConstraints();
-        }
-
         if (addVariableNonnegativity) {
             int n = objectiveFunction.maxIndex + 1;
             for (int i = 0; i < n; i++) {
                 originalInequalityConstraints.emplace_back(Term({i}));
             }
+        }
+
+        if (enableOriginalVariableNormBound) {
+            int n = objectiveFunction.maxIndex + 1;
+            for (int i = 0; i < n; i++) {
+                originalInequalityConstraints.emplace_back(Polynomial(Monomial(originalVariableNormBound * originalVariableNormBound)) - Monomial(Term{i, i}));
+            }
+        }
+
+        if (gradientConstraintType == 2) {
+            _AddGradientConstraints();
+        }
+
+        if (gradientConstraintType == 3) {
+            _AddMinors();
         }
 
         _ConstructNewConstraints();
@@ -126,15 +144,52 @@ namespace SPOPT {
     void ProblemData::_AddGradientConstraints()
     {
         int variableNum = objectiveFunction.maxIndex + 1;
+        Polynomial LagrangianFunction = objectiveFunction;
+        
+        for (int i = 0; i < variableNum; i++) {
+            LagrangianFunction += Monomial(Term({i, i, variableNum}), 1, /* sorted = */true);
+        }
+        LagrangianFunction += Monomial(Term({variableNum}), -1, /* sorted = */true);
+
+        variableNum++;
         for (int i = 0; i < variableNum; i++) {
             Polynomial grad_i;
-            for (auto &monomial : objectiveFunction.monomials) {
+            for (auto &monomial : LagrangianFunction.monomials) {
                 Monomial dif = Monomial(monomial.first, monomial.second, /* sorted = */true).DifferentiateBy(i);
                 if (dif.term.size() == 0 && std::abs(dif.coefficient) <= EPS) continue;
                 grad_i += dif;
             }
             originalEqualityConstraints.emplace_back(grad_i);
         }
+
+        for (int i = 0; i < originalIndexSets.size(); i++) {
+            originalIndexSets[i].emplace_back(variableNum - 1);
+        }
+    }
+
+    void ProblemData::_AddMinors()
+    {
+        int n = objectiveFunction.maxIndex + 1;
+
+        originalIndexSets.clear();
+        std::vector<int> allIndex(n);
+        std::iota(allIndex.begin(), allIndex.end(), 0);
+        originalIndexSets.emplace_back(allIndex);
+
+        std::vector<Polynomial> pderivatives;
+
+        for (int i = 0; i < n; i++) {
+            pderivatives.emplace_back(objectiveFunction.DifferentiateBy(i));
+        }
+
+        std::vector<Polynomial> newConstraints(2 * n - 3);
+        for (int i = 0; i < n; i++) {
+            for (int j = i + 1; j < n; j++) {
+                newConstraints[i + j] += pderivatives[i] * Monomial(Term({j})) - pderivatives[j] * Monomial(Term({i}));
+            }
+        }
+
+        originalEqualityConstraints.insert(originalEqualityConstraints.end(), newConstraints.begin(), newConstraints.end());
     }
 
     void ProblemData::_ConstructNewConstraints()
@@ -224,7 +279,7 @@ namespace SPOPT {
 
         int newVariableID = objectiveFunction.maxIndex + 1;
 
-        if (enableGradientConstraint) {
+        if (gradientConstraintType == 1) {
             objectiveMonomials.resize(originalIndexSets.size());
             for (auto monomial : objectiveFunction.monomials) {
                 Term t = monomial.first;
@@ -304,7 +359,7 @@ namespace SPOPT {
     {
         std::vector<int> newVariables, originalVariables;
 
-        if (enableGradientConstraint) {
+        if (gradientConstraintType == 1) {
             for (auto tmpID : objectiveIDs[v]) {
                 if (variableOrderMap.find(tmpID) == variableOrderMap.end()) {
                     variableOrderMap[tmpID] = -1;
@@ -349,7 +404,7 @@ namespace SPOPT {
             if (!visited[originalIndexSets[v][i]]) {
                 visited[originalIndexSets[v][i]] = true;
 
-                if (enableGradientConstraint) {
+                if (gradientConstraintType == 1) {
                     Term t = {objectiveIDs[v][i]};
                     convertedEqualityConstraints.emplace_back(Polynomial(Monomial(t, /* sorted = */true)));
                     groupIDOfConvertedEqualityConstraints.emplace_back(newIndexSetID);
@@ -376,7 +431,7 @@ namespace SPOPT {
                     newIndexSet.emplace_back(constraintIDs[i][v]);
                 }
             }
-            if (enableGradientConstraint) {
+            if (gradientConstraintType == 1) {
                 newIndexSet.insert(newIndexSet.end(), objectiveIDs[v].begin(), objectiveIDs[v].end());
             }
             std::sort(newIndexSet.begin(), newIndexSet.end());
@@ -402,7 +457,7 @@ namespace SPOPT {
                 }
             }
 
-            if (enableGradientConstraint) {
+            if (gradientConstraintType == 1) {
                 for (int i = 0; i < originalIndexSets[v].size(); i++) {
                     Term t = {objectiveIDs[v][i]};
                     Polynomial poly(Monomial(t, -1, /* sorted = */true));
@@ -424,7 +479,7 @@ namespace SPOPT {
                 }
             }
 
-            std::vector<int> prvObjectiveVariables = (enableGradientConstraint ? objectiveIDs[v] : std::vector<int>());
+            std::vector<int> prvObjectiveVariables = (gradientConstraintType == 1 ? objectiveIDs[v] : std::vector<int>());
 
             for (int i = 0; i < originalJunctionTree[v].size(); i++) {
                 int nx = originalJunctionTree[v][i];
@@ -485,7 +540,7 @@ namespace SPOPT {
 
                 std::vector<int> nxtObjectiveVariables;
 
-                if (enableGradientConstraint) {
+                if (gradientConstraintType == 1) {
                     for (int j = 0; j < originalIndexSets[v].size(); j++) {
                         auto it = std::find(originalIndexSets[nx].begin(), originalIndexSets[nx].end(), originalIndexSets[v][j]);
 
@@ -1162,7 +1217,7 @@ namespace SPOPT {
 
     std::vector<std::vector<double>> ProblemData::ExtractSolutionsFrom(std::vector<double> &v)
     {
-        int n = objectiveFunction.maxIndex + 1;
+        int n = objectiveFunction.maxIndex + (gradientConstraintType != 2);
 
         std::vector<std::vector<double>> ret;
 
@@ -1278,13 +1333,18 @@ namespace SPOPT {
                     }
 
                     if (abs(V(ptr, bigCol)) < 1e-5) {
+                        for (int k = j; k < colNumOfV; k++) V(ptr, k) = 0;
                         ptr++; continue;
                     }
                     else if (bigCol != j) {
                         V.col(j).swap(V.col(bigCol));
                     }
 
-                    if (tmpTerms[ptr].size() == hierarchyDegree) {
+                    double rowMax = abs(V(ptr, j));
+                    for (int k = ptr + 1; k < newOrd.size(); k++) rowMax = std::max(rowMax, abs(V(k, j)));
+                    while (ptr < newOrd.size() && abs(V(ptr, j)) < 1e-5 * rowMax) ptr++;
+
+                    if (ptr == newOrd.size() || tmpTerms[ptr].size() == hierarchyDegree) {
                         std::cout << "[ExtractSolution] [Error] degree of the monomial is too large" << std::endl;
                         std::cout << V << std::endl;
                         return std::vector<std::vector<double>>();
@@ -1352,9 +1412,12 @@ namespace SPOPT {
                 }
             }
 
-            for (int j = 0; j < originalVariableNum; j++) {
-                std::cout << convertedIndexSets[i][j] << " = " << solutionCandidates[i][0][j] << ",";
+            for (int k = 0; k < colNumOfV; k++) {
+                for (int j = 0; j < originalVariableNum; j++) {
+                    std::cout << convertedIndexSets[i][j] << " = " << solutionCandidates[i][k][j] << ",";
+                }
             }
+
             std::cout << std::endl;
         }
 
@@ -1364,6 +1427,11 @@ namespace SPOPT {
         _GenerateSolutions(0, solutionCandidates, done, tmp, ret);
 
         return ret;
+    }
+
+    double ProblemData::Apply(std::vector<double> &x)
+    {
+        return objectiveFunction.Evaluate(x);
     }
 
     void ProblemData::Analyze(std::vector<double> &x)
