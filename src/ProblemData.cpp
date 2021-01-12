@@ -155,13 +155,7 @@ namespace SPOPT {
 
         variableNum++;
         for (int i = 0; i < variableNum; i++) {
-            Polynomial grad_i;
-            for (auto &monomial : objectiveFunction.monomials) {
-                Monomial dif = Monomial(monomial.first, monomial.second, /* sorted = */true).DifferentiateBy(i);
-                grad_i += dif;
-            }
-            grad_i.Simplify();
-            originalEqualityConstraints.emplace_back(grad_i);
+            originalEqualityConstraints.emplace_back(objectiveFunction.DifferentiateBy(i));
         }
 
         for (int i = 0; i < originalIndexSets.size(); i++) {
