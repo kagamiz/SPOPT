@@ -71,6 +71,8 @@ namespace SPOPT {
             }
         }
         else {
+            originalJunctionTree.resize(1);
+            originalJunctionTree[0].clear();
             int n = objectiveFunction.maxIndex + 1;
             std::vector<int> allIndex(n);
             std::iota(allIndex.begin(), allIndex.end(), 0);
@@ -171,6 +173,8 @@ namespace SPOPT {
     {
         int n = objectiveFunction.maxIndex + 1;
 
+        originalJunctionTree.resize(1);
+        originalJunctionTree[0].clear();
         originalIndexSets.clear();
         std::vector<int> allIndex(n);
         std::iota(allIndex.begin(), allIndex.end(), 0);
