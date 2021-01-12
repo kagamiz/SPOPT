@@ -241,6 +241,7 @@ namespace SPOPT {
                 if (m.term.size()) {
                     ret.maxIndex = std::max(this->maxIndex, *std::max_element(m.term.begin(), m.term.end()));
                 }
+                ret.Simplify();
                 return ret;
             }
 
@@ -251,6 +252,7 @@ namespace SPOPT {
                     Polynomial tmp = *this * Monomial(monomial.first, monomial.second);
                     ret = ret + tmp;
                 }
+                ret.Simplify();
                 return ret;
             }
 
@@ -260,6 +262,7 @@ namespace SPOPT {
                 for (auto &monomial : this->monomials) {
                     ret = ret + Monomial(monomial.first, monomial.second).DifferentiateBy(ind);
                 }
+                ret.Simplify();
                 return ret;
             }
 
@@ -281,6 +284,14 @@ namespace SPOPT {
                     res += Monomial(monomial.first, monomial.second, /* sorted = */true).Evaluate(values);
                 }
                 return res;
+            }
+
+            void Simplify()
+            {
+                for (auto it = monomials.begin(); it != monomials.end(); ) {
+                    if (abs(it->second) < 1e-6) it = monomials.erase(it);
+                    else it++; 
+                }
             }
 
             int degree;

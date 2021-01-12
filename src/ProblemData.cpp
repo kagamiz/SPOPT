@@ -193,6 +193,8 @@ namespace SPOPT {
             }
         }
 
+        for (int i = 0; i < 2 * n - 3; i++) newConstraints[i].Simplify();
+
         originalEqualityConstraints.insert(originalEqualityConstraints.end(), newConstraints.begin(), newConstraints.end());
     }
 
@@ -467,9 +469,9 @@ namespace SPOPT {
                     Polynomial poly(Monomial(t, -1, /* sorted = */true));
                     for (int j = 0; j < objectiveMonomials[v].size(); j++) {
                         Monomial dif = objectiveMonomials[v][j].DifferentiateBy(originalIndexSets[v][i]);
-                        if (dif.term.size() == 0 && std::abs(dif.coefficient) <= EPS) continue;
                         poly += dif;
                     }
+                    poly.Simplify();
                     convertedEqualityConstraints.emplace_back(poly);
                     groupIDOfConvertedEqualityConstraints.emplace_back(newIndexSetID);
                 }
@@ -588,9 +590,9 @@ namespace SPOPT {
                             }
                             for (int k = 0; k < objectiveMonomials[v].size(); k++) {
                                 Monomial dif = objectiveMonomials[v][k].DifferentiateBy(originalIndexSets[v][j]);
-                                if (dif.term.size() == 0 && std::abs(dif.coefficient) <= EPS) continue;
                                 poly += dif;
                             }
+                            poly.Simplify();
                         }
                         if (poly.monomials.size() > 0) {
                             convertedEqualityConstraints.emplace_back(poly);
