@@ -146,22 +146,22 @@ namespace SPOPT {
     void ProblemData::_AddGradientConstraints()
     {
         int variableNum = objectiveFunction.maxIndex + 1;
-        //Polynomial LagrangianFunction = objectiveFunction;
+        Polynomial LagrangianFunction = objectiveFunction;
         
         for (int i = 0; i < variableNum; i++) {
-            objectiveFunction += Monomial(Term({i, i, variableNum}), 1, /* sorted = */true);
+            LagrangianFunction += Monomial(Term({i, i, variableNum}), 1, /* sorted = */true);
         }
-        objectiveFunction += Monomial(Term({variableNum}), -1, /* sorted = */true);
+        LagrangianFunction += Monomial(Term({variableNum}), -1, /* sorted = */true);
 
         variableNum++;
         for (int i = 0; i < variableNum; i++) {
-            originalEqualityConstraints.emplace_back(objectiveFunction.DifferentiateBy(i));
+            originalEqualityConstraints.emplace_back(LagrangianFunction.DifferentiateBy(i));
         }
 
         for (int i = 0; i < originalIndexSets.size(); i++) {
             originalIndexSets[i].emplace_back(variableNum - 1);
         }
-        //objectiveFunction.maxIndex++;
+        objectiveFunction.maxIndex++;
     }
 
     void ProblemData::_AddMinors()
