@@ -158,9 +158,9 @@ namespace SPOPT {
             Polynomial grad_i;
             for (auto &monomial : LagrangianFunction.monomials) {
                 Monomial dif = Monomial(monomial.first, monomial.second, /* sorted = */true).DifferentiateBy(i);
-                if (dif.term.size() == 0 && std::abs(dif.coefficient) <= EPS) continue;
                 grad_i += dif;
             }
+            grad_i.Simplify();
             originalEqualityConstraints.emplace_back(grad_i);
         }
 
