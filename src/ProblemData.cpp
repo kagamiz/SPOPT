@@ -649,14 +649,15 @@ namespace SPOPT {
         }
 
         std::vector<std::pair<int, Term>> terms;
-
-        int counter = 0;
+	
+	int firstAuxVarID = objectiveFunction.maxIndex + !(gradientConstraintType == 2);
         for (int i = 0; i < convertedTermSets.size(); i++) {
             int sz = convertedTermSets[i].size();
             for (int j = 0; j < sz; j++) {
                 for (int k = j; k < sz; k++) {
                     Term t1 = convertedTermSets[i][j];
                     Term t2 = convertedTermSets[i][k];
+		    if (t1.size() + t2.size() == 2 * hierarchyDegree && std::min(t1[0], t2[0]) >= firstAuxVarID) continue;
                     Term merged;
                     int it1 = 0, it2 = 0, len = t1.size() + t2.size();
                     int rank = variableOrderMap.size();
@@ -744,8 +745,9 @@ namespace SPOPT {
             colNumOfA += (n + 1) * (n + 2) / 2;
             psdMatrixSizes.emplace_back(n + 1);
         }
+	int firstAuxVarID = objectiveFunction.maxIndex  + !(gradientConstraintType == 2);
         for (auto &convertedTermSet : convertedTermSets) {
-            int sz = convertedTermSet.size();
+            int sz = std::count_if(convertedTermSet.begin(), convertedTermSet.end(), [&](Term x) { return !(x.size() == hierarchyDegree && x[0] >= firstAuxVarID ); } );
             colNumOfA += sz * (sz + 1) / 2;
             psdMatrixSizes.emplace_back(sz);
         }
@@ -784,6 +786,7 @@ namespace SPOPT {
                 }
             }
         }
+	
         for (int i = 0; i < convertedTermSets.size(); i++) {
             int sz = convertedTermSets[i].size();
             for (int j = 0; j < sz; j++) {
@@ -791,6 +794,8 @@ namespace SPOPT {
                     Term t1 = convertedTermSets[i][j];
                     Term t2 = convertedTermSets[i][k];
                     Term merged;
+		    if (t1.size() == hierarchyDegree && t1[0] >= firstAuxVarID) continue;
+		    if (t2.size() == hierarchyDegree && t2[0] >= firstAuxVarID) continue;
                     int it1 = 0, it2 = 0, len = t1.size() + t2.size();
                     while (it1 + it2 < len) {
                         if (it2 == t2.size() || (it1 < t1.size() && t1[it1] <= t2[it2])) {
@@ -800,6 +805,12 @@ namespace SPOPT {
                             merged.push_back(t2[it2]); it2++;
                         }
                     }
+		    if (termToInteger.find(merged) == termToInteger.end()) {
+		        for (auto &e : merged) {
+			    std::cout << e << ", ";
+			}
+			std::cout << std::endl;
+		    }
                     int id = termToInteger[merged];
                     tripletList.emplace_back(id, leftmostPosition, 1 * (j != k ? sq2 : 1));
                     if (j != k) sq2Cols.emplace_back(leftmostPosition);
@@ -843,7 +854,12 @@ namespace SPOPT {
                                 merged.push_back(t3[it3]); it3++;
                             }
                         }
-
+			if (termToInteger.find(merged) == termToInteger.end()) {
+			    for (auto &e : merged) {
+				std::cout << e << ", ";
+			    }
+			    std::cout << std::endl;
+			}
                         int id = termToInteger[merged];
                         tripletList.emplace_back(id, leftmostPosition, coef * (j != k ? sq2 : 1));
                     }
@@ -1179,40 +1195,40 @@ namespace SPOPT {
         #endif //__BUILD_WITH_MATLAB__
     }
 
-    void ProblemData::_GenerateSolutions(int cur, std::vector<std::vector<std::vector<double>>> &solutionCandidates, std::vector<bool> &done, std::vector<double> &tmp, std::vector<std::vector<double>> &answers)
+    void ProblemData::_GenerateSolutions(int cur, std::vector<std::vector<std::vector<double>>> &solutionCandidates, std::vector<std::vector<double>> &tmp, std::vector<std::vector<double>> &answers)
     {
         if (cur == solutionCandidates.size()) {
-            bool ok = true;
-            for (int i = 0; i < done.size(); i++) ok &= done[i];
-            if (ok) {
-                answers.emplace_back(tmp);
-            }
+	    std::vector<double> ansCand(tmp.size());
+	    for (int i = 0; i < ansCand.size(); i++) {
+		if (tmp[i].size() == 0) return;
+		ansCand[i] = std::accumulate(tmp[i].begin(), tmp[i].end(), 0.0) * 1. / tmp[i].size();
+	    }
+            answers.emplace_back(ansCand);
             return;
         }
-
-        std::vector<int> newIndices;
+	
+	std::vector<int> addInd;
 
         for (auto solutionCandidate : solutionCandidates[cur]) {
             bool compatible = true;
             for (int i = 0; i < solutionCandidate.size(); i++) {
                 int ind = convertedIndexSets[cur][i];
-                if (done[ind] && std::abs(tmp[ind] - solutionCandidate[i]) / std::max({1.0, std::abs(tmp[ind]), std::abs(solutionCandidate[i])}) >= 1e-3) {
+                if (tmp[ind].size() && std::abs(tmp[ind][0] - solutionCandidate[i]) / std::max({1.0, std::abs(tmp[ind][0]), std::abs(solutionCandidate[i])}) >= 1e-3) {
                     compatible = false;
                     break;
                 }
-                else if (!done[ind]) {
-                    done[ind] = true;
-                    tmp[ind] = solutionCandidate[i];
-                    newIndices.emplace_back(ind);
+                else {
+                    tmp[ind].emplace_back(solutionCandidate[i]);
+		    addInd.emplace_back(ind);
                 }
             }
             if (compatible) {
-                _GenerateSolutions(cur + 1, solutionCandidates, done, tmp, answers);
+                _GenerateSolutions(cur + 1, solutionCandidates, tmp, answers);
             }
-            for (auto i : newIndices) {
-                done[i] = false;
-            }
-            newIndices.clear();
+            for (int i = 0; i < addInd.size(); i++) {
+		tmp[addInd[i]].pop_back();
+	    }
+      	    addInd.clear();
         }
     }
 
@@ -1233,7 +1249,7 @@ namespace SPOPT {
                     MomentMatrix(i, j) = MomentMatrix(j, i) = v[termToInteger[t]];
                 }
             }
-            std::cout << MomentMatrix << std::endl;
+            //std::cout << MomentMatrix << std::endl;
             Eigen::ColPivHouseholderQR<Eigen::MatrixXd> QRDecomp(MomentMatrix);
             QRDecomp.setThreshold(1e-5);
             std::cout << "rank(M_{n,1}(y)) = " << QRDecomp.rank() << std::endl;
@@ -1289,24 +1305,25 @@ namespace SPOPT {
                 std::cout << "Error occured on eigen decomposition :(" << std::endl;
                 exit(1);
             }
-
+	    //std::cout << eigenSolver.eigenvalues() << std::endl;
             int positiveNum = 0;
-            for (int i = 0; i < sz; i++) {
+            for (int i = sz - 1; i >= 0; i--) {
                 double lambda = eigenSolver.eigenvalues()(i);
-                if (lambda / eigenSolver.eigenvalues()(sz - 1) > 1e-3) {
+                if (lambda / eigenSolver.eigenvalues()(sz - 1) >= 1e-2) {
                     positiveNum++;
                 }
+		else {
+		    break;
+		}
             }
             
             Eigen::MatrixXd V = Eigen::MatrixXd::Zero(sz, positiveNum);
             {
                 int ptr = 0;
-                for (int i = 0; i < sz; i++) {
-                    double lambda = eigenSolver.eigenvalues()(i);
-                    if (lambda / eigenSolver.eigenvalues()(sz - 1) > 1e-3) {
-                        V.col(ptr) = sqrt(lambda) * eigenSolver.eigenvectors().col(i);
-                        ptr++;
-                    }
+                for (int i = 0; i < positiveNum; i++) {
+                    double lambda = eigenSolver.eigenvalues()(sz - i - 1);
+                    V.col(ptr) = sqrt(lambda) * eigenSolver.eigenvectors().col(sz - i - 1);
+                    ptr++;
                 }
             }
 
@@ -1347,7 +1364,7 @@ namespace SPOPT {
 
                     if (ptr == newOrd.size() || tmpTerms[ptr].size() == hierarchyDegree) {
                         std::cout << "[ExtractSolution] [Error] degree of the monomial is too large" << std::endl;
-                        std::cout << V << std::endl;
+                        //std::cout << V << std::endl;
                         return std::vector<std::vector<double>>();
                     }
 
@@ -1399,7 +1416,7 @@ namespace SPOPT {
             Eigen::RealSchur<Eigen::MatrixXd> NSchur(N);
             if (NSchur.matrixT().isUpperTriangular(1e-5) == false) {
                 std::cout << "[ExtractSolution] [Error] Schur Decompostion contains a complex number (i = " << i << ")" << std::endl;
-                std::cout << NSchur.matrixT() << std::endl;
+                //std::cout << NSchur.matrixT() << std::endl;
                 return std::vector<std::vector<double>>();
             }
 
@@ -1412,20 +1429,19 @@ namespace SPOPT {
                     solutionCandidates[i][k][j] = Q.col(k).transpose() * Ns[j] * Q.col(k);
                 }
             }
-
+	    
             for (int k = 0; k < colNumOfV; k++) {
                 for (int j = 0; j < originalVariableNum; j++) {
                     std::cout << convertedIndexSets[i][j] << " = " << solutionCandidates[i][k][j] << ",";
                 }
+		std::cout << std::endl;
             }
-
-            std::cout << std::endl;
+	    
         }
 
-        std::vector<bool>  done(n, false);
-        std::vector<double> tmp(n, 0);
+        std::vector<std::vector<double>> tmp(n);
 
-        _GenerateSolutions(0, solutionCandidates, done, tmp, ret);
+        _GenerateSolutions(0, solutionCandidates, tmp, ret);
 
         return ret;
     }
@@ -1438,7 +1454,7 @@ namespace SPOPT {
     void ProblemData::Analyze(std::vector<double> &x)
     {
         std::cout << std::resetiosflags(std::ios_base::floatfield);
-        std::cout << "(";
+        /*std::cout << "(";
         for (int i = 0; i < x.size(); i++) {
             std::cout << x[i];
             if (i + 1 == x.size()) {
@@ -1447,7 +1463,7 @@ namespace SPOPT {
             else {
                 std::cout << ", ";
             }
-        }
+        }*/
 
         std::cout << "f(x) = " << objectiveFunction.Evaluate(x) << std::endl;
 

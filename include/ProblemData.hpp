@@ -147,7 +147,7 @@ namespace SPOPT {
             std::map<Term, int> termToInteger;
 
             // auxiliary function used to extract an approximate solutions from truncated moments
-            void _GenerateSolutions(int cur, std::vector<std::vector<std::vector<double>>> &solutionCandidates, std::vector<bool> &done, std::vector<double> &tmp, std::vector<std::vector<double>> &answers);
+            void _GenerateSolutions(int cur, std::vector<std::vector<std::vector<double>>> &solutionCandidates, std::vector<std::vector<double>> &tmp, std::vector<std::vector<double>> &answers);
 };
 }
 #endif //__PROBLEM_DATA_HPP__
