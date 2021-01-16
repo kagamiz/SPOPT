@@ -34,6 +34,7 @@ namespace SPOPT {
             // Reads solver settings from the file `filename` and store the information on private members.
             // TODO: error handling
             void LoadConfig(std::string fileName);
+            void LoadConfig(YAML::Node &problemDataConfig);
 
             void ConstructSDP();
             void ShowPOP();
@@ -53,7 +54,7 @@ namespace SPOPT {
 
             // returns approximate point that satisfies moment conditions by
             // an algorithm proposed by Henrion & Lasserre (2006).
-            std::vector<std::vector<double>> ExtractSolutionsFrom(std::vector<double> &v);
+            std::vector<std::vector<double>> ExtractSolutionsFrom(std::vector<double> &v, bool tellObjVal = false, double objVal = -1);
             
             friend Solver;
 
@@ -76,6 +77,7 @@ namespace SPOPT {
 
             // Options
             bool enableScaling;
+            bool verbose;
             int gradientConstraintType; // 0 : None, 1 : given in input + make as gradient constraint on minimal subtree, 2 : lagrangian type, 3 : all 2x2 minor
             bool enableLowerBound;
             bool enableOriginalVariableNormBound;

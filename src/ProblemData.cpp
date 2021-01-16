@@ -12,7 +12,13 @@ namespace SPOPT {
     {
         YAML::Node problemDataConfig = YAML::LoadFile(fileName);
 
+        LoadConfig(problemDataConfig);
+    }
+
+    void ProblemData::LoadConfig(YAML::Node &problemDataConfig)
+    {
         enableScaling                   = problemDataConfig["enableScaling"].as<bool>(true);
+        verbose                         = problemDataConfig["verbose"].as<bool>(false);
         scalingFactor                   = problemDataConfig["scalingFactor"].as<double>(5.0);
         gradientConstraintType          = problemDataConfig["gradientConstraintType"].as<int>(0);
         enableLowerBound                = problemDataConfig["enableLowerBound"].as<bool>(false);
@@ -29,6 +35,16 @@ namespace SPOPT {
         srand(RNGSeed);
 
         objectiveFunction.LoadFromFile(problemDataConfig["objectiveFunctionFile"].as<std::string>("examples/affine.txt"));
+
+        if (problemDataConfig["maximize"].as<bool>(false) == true) {
+            objectiveFunction = -objectiveFunction;
+            bool oldLowerBound = enableLowerBound;
+            bool oldUpperBound = enableUpperBound;
+            enableLowerBound = oldUpperBound;
+            enableUpperBound = oldLowerBound;
+            lowerBoundConstant = -upperBoundConstant;
+            upperBoundConstant = -lowerBoundConstant;
+        }
 
         if (problemDataConfig["equalityConstraintFiles"]) {
             YAML::Node equalityConstraintFiles = problemDataConfig["equalityConstraintFiles"];
@@ -134,12 +150,14 @@ namespace SPOPT {
             else PSDSize[psdMat] = 1;
         }
 
-        std::cout << "semidefinite variables :" << std::endl;
-        for (auto it = PSDSize.begin(); it != PSDSize.end(); it++) {
-            auto [p, q] = *it;
-            std::cout << "(" << p << "," << q << ")" << std::endl;
+        if (verbose) {
+            std::cout << "semidefinite variables :" << std::endl;
+            for (auto it = PSDSize.begin(); it != PSDSize.end(); it++) {
+                auto [p, q] = *it;
+                std::cout << "(" << p << "," << q << ")" << std::endl;
+            }
+            std::cout << "Number of the LMI : " << A.rows() << std::endl;
         }
-        std::cout << "Number of the LMI : " << A.rows() << std::endl;
     }
 
     void ProblemData::_AddGradientConstraints()
@@ -171,7 +189,7 @@ namespace SPOPT {
         }
 	Polynomial TotalNorm = Polynomial(Monomial(1)) - Monomial(Term({variableNum - 1, variableNum - 1}), 1./10000, /* sorted = */true);
         originalInequalityConstraints.emplace_back(TotalNorm);
-	objectiveFunction.maxIndex++;
+	    objectiveFunction.maxIndex++;
 	//objectiveFunction = LagrangianFunction;
     }
 
@@ -1258,7 +1276,7 @@ namespace SPOPT {
         }
     }
 
-    std::vector<std::vector<double>> ProblemData::ExtractSolutionsFrom(std::vector<double> &v)
+    std::vector<std::vector<double>> ProblemData::ExtractSolutionsFrom(std::vector<double> &v, bool tellObjVal, double objVal)
     {
         int n = objectiveFunction.maxIndex + (gradientConstraintType != 2);
 
@@ -1275,10 +1293,10 @@ namespace SPOPT {
                     MomentMatrix(i, j) = MomentMatrix(j, i) = v[termToInteger[t]];
                 }
             }
-            std::cout << MomentMatrix << std::endl;
+            //std::cout << MomentMatrix << std::endl;
             Eigen::ColPivHouseholderQR<Eigen::MatrixXd> QRDecomp(MomentMatrix);
             QRDecomp.setThreshold(1e-5);
-            std::cout << "rank(M_{n,1}(y)) = " << QRDecomp.rank() << std::endl;
+            //std::cout << "rank(M_{n,1}(y)) = " << QRDecomp.rank() << std::endl;
             if (QRDecomp.rank() == 1) {
                 std::vector<double> res(n, 0);
                 for (int i = 1; i <= n; i++) {
@@ -1287,7 +1305,7 @@ namespace SPOPT {
                 ret.emplace_back(res);
                 return ret;
             }
-            std::cout << "rank(M_{n,1})(y) > 1, so we'll continue the ordinary procedure." << std::endl;
+            //std::cout << "rank(M_{n,1})(y) > 1, so we'll continue the ordinary procedure." << std::endl;
         }
 
         for (int i = 0; i < convertedIndexSets.size(); i++) {
@@ -1328,7 +1346,7 @@ namespace SPOPT {
 
             Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigenSolver(MomentMatrix);
             if (eigenSolver.info() != Eigen::Success) {
-                std::cout << "Error occured on eigen decomposition :(" << std::endl;
+                //std::cout << "Error occured on eigen decomposition :(" << std::endl;
                 exit(1);
             }
 	    //std::cout << eigenSolver.eigenvalues() << std::endl;
@@ -1365,7 +1383,7 @@ namespace SPOPT {
                 int ptr = 0;
                 for (int j = 0; j < colNumOfV; ) {
                     if (ptr == newOrd.size()) {
-                        std::cout << "[ExtractSolution] [Error] making column echelon form failed" << std::endl;
+                        //std::cout << "[ExtractSolution] [Error] making column echelon form failed" << std::endl;
                         return std::vector<std::vector<double>>();
                     }
 
@@ -1389,7 +1407,7 @@ namespace SPOPT {
                     while (ptr < newOrd.size() && abs(V(ptr, j)) < 1e-5 * rowMax) ptr++;
 
                     if (ptr == newOrd.size() || tmpTerms[ptr].size() == hierarchyDegree) {
-                        std::cout << "[ExtractSolution] [Error] degree of the monomial is too large" << std::endl;
+                        //std::cout << "[ExtractSolution] [Error] degree of the monomial is too large" << std::endl;
                         //std::cout << V << std::endl;
                         return std::vector<std::vector<double>>();
                     }
@@ -1441,7 +1459,7 @@ namespace SPOPT {
             
             Eigen::RealSchur<Eigen::MatrixXd> NSchur(N);
             if (NSchur.matrixT().isUpperTriangular(1e-5) == false) {
-                std::cout << "[ExtractSolution] [Error] Schur Decompostion contains a complex number (i = " << i << ")" << std::endl;
+                //std::cout << "[ExtractSolution] [Error] Schur Decompostion contains a complex number (i = " << i << ")" << std::endl;
                 //std::cout << NSchur.matrixT() << std::endl;
                 return std::vector<std::vector<double>>();
             }
@@ -1456,18 +1474,48 @@ namespace SPOPT {
                 }
             }
 	    
-            for (int k = 0; k < colNumOfV; k++) {
-                for (int j = 0; j < originalVariableNum; j++) {
-                    std::cout << convertedIndexSets[i][j] << " = " << solutionCandidates[i][k][j] << ",";
-                }
-		std::cout << std::endl;
-            }
+            //for (int k = 0; k < colNumOfV; k++) {
+            //    for (int j = 0; j < originalVariableNum; j++) {
+            //        std::cout << convertedIndexSets[i][j] << " = " << solutionCandidates[i][k][j] << ",";
+            //    }
+		    //    std::cout << std::endl;
+            //}
 	    
         }
 
         std::vector<std::vector<double>> tmp(n);
 
         _GenerateSolutions(0, solutionCandidates, tmp, ret);
+
+        for (auto it = ret.begin(); it != ret.end(); ) {
+            std::vector<double> x = *it;
+            double fx = objectiveFunction.Evaluate(x);
+
+            if (tellObjVal == true && std::abs(fx - objVal) >= 1e-5) {
+                it = ret.erase(it); continue;
+            }
+
+            double norm = 0;
+            for (int i = 0; i < x.size(); i++) norm += x[i] * x[i];
+            if (std::abs(norm - 1) >= 1e-5) {
+                it = ret.erase(it); continue;
+            }
+
+
+            double nablaFNorm = 0;
+            std::vector<double> dx(x.size());
+            for (int i = 0; i < x.size(); i++) {
+                dx[i] = objectiveFunction.DifferentiateBy(i).Evaluate(x);
+                nablaFNorm += dx[i] * dx[i];
+            }
+
+            double innerProd = 0;
+            for (int i = 0; i < x.size(); i++) innerProd += x[i] * dx[i];
+            if (std::abs(std::abs(innerProd) / (sqrt(norm) * sqrt(nablaFNorm)) - 1) >= 1e-5) {
+                it = ret.erase(it); continue;
+            }
+            it++;
+        }
 
         return ret;
     }

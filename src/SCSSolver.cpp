@@ -100,7 +100,7 @@ namespace SPOPT {
         d->stgs->eps                   = std::min({basicParam.primalTolerance, basicParam.dualTolerance, basicParam.gapTolerance});
         d->stgs->alpha                 = SCSParam.alpha;
         d->stgs->cg_rate               = CG_RATE;
-        d->stgs->verbose               = true;
+        d->stgs->verbose               = verbose(problemData);
         d->stgs->warm_start            = false;
         d->stgs->acceleration_lookback = (basicParam.enableAndersonAcceleration ? basicParam.AAMemoryLength : 0);
 
@@ -120,14 +120,16 @@ namespace SPOPT {
         k->p = (scs_float *)scs_calloc(k->psize, sizeof(scs_float));
     }
 
-    std::vector<double> SCSSolver::Solve(const ProblemData &problemData)
+    std::pair<double, std::vector<double>> SCSSolver::Solve(const ProblemData &problemData)
     {
         SetUpFrom(problemData);
         sol = (ScsSolution *)scs_calloc(1, sizeof(ScsSolution));
         scs(d, k, sol, &info);
-	
-        std::cout << std::fixed << std::setprecision(2) << "time : " <<  (info.setup_time + info.solve_time) / 1000.0 << std::scientific << std::setprecision(2) << ", opt : " << info.pobj << ", err :" << std::max({info.res_pri, info.res_dual, info.rel_gap})  << ", ite : " << info.iter << std::endl;
-	std::cout << std::resetiosflags(std::ios_base::floatfield); 
+
+        if (verbose(problemData)) {
+            std::cout << std::fixed << std::setprecision(2) << "time : " <<  (info.setup_time + info.solve_time) / 1000.0 << std::scientific << std::setprecision(2) << ", opt : " << info.pobj << ", err :" << std::max({info.res_pri, info.res_dual, info.rel_gap})  << ", ite : " << info.iter << std::endl;
+            std::cout << std::resetiosflags(std::ios_base::floatfield); 
+        }
         std::vector<double> y(MatrixA(problemData).rows());
         for (int i = 0; i < y.size(); i++) {
             y[i] = sol->x[i];
@@ -136,6 +138,6 @@ namespace SPOPT {
         scs_free_data(d, k);
         scs_free_sol(sol);
 
-        return y;
+        return std::make_pair(info.pobj, y);
     }   
 }

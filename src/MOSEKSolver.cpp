@@ -15,10 +15,10 @@ namespace SPOPT {
         Solver::LoadConfig(fileName);
     }
 
-    std::vector<double> MOSEKSolver::Solve(const ProblemData &problemData)
+    std::pair<double, std::vector<double>> MOSEKSolver::Solve(const ProblemData &problemData)
     {
         Model::t M = new Model("SOS_Hierarchy"); auto _M = finally([&]() { M->dispose(); } );
-        M->setLogHandler([=](const std::string &msg) { std::cout << msg << std::flush; } );
+        if (verbose(problemData)) M->setLogHandler([=](const std::string &msg) { std::cout << msg << std::flush; } );
 
         std::shared_ptr<ndarray<Variable::t>> variables(new ndarray<Variable::t>(1 + psdMatrixSizes(problemData).size() + symmetricMatrixSizes(problemData).size()));
         (*variables)[0] = M->variable();
@@ -108,11 +108,13 @@ namespace SPOPT {
         double gap = std::abs(M->getSolverDoubleInfo("intpntPrimalObj") - M->getSolverDoubleInfo("intpntDualObj")) / (1 + std::abs(M->getSolverDoubleInfo("intpntPrimalObj")) + std::abs(M->getSolverDoubleInfo("intpntDualObj")));
         double err = std::max({pinf, dinf, gap});
         int ite = M->getSolverIntInfo("intpntIter");
-        std::cout << "time : " <<  tm << ", opt : " << opt << ", err :" << err  << ", ite : " << ite << std::endl;
+        if (verbose(problemData)) {
+            std::cout << "time : " <<  tm << ", opt : " << opt << ", err :" << err  << ", ite : " << ite << std::endl;
+        }
         //std::cout << "Solution : " << (*(x->level()))[0] << std::endl;
 
         std::vector<double> _y(y.size());
         for (int i = 0; i < y.size(); i++) _y[i] = y[i];
-        return _y;
+        return std::make_pair(opt, _y);
     }
 }

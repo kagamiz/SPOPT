@@ -35,7 +35,7 @@ namespace SPOPT {
         std::cout << std::resetiosflags(std::ios_base::floatfield);
     }
 
-    std::vector<double> Solver::Solve(const ProblemData &problemData)
+    std::pair<double, std::vector<double>> Solver::Solve(const ProblemData &problemData)
     {
         SetUpFrom(problemData);
         int iterationCounter = 0;
@@ -88,7 +88,157 @@ namespace SPOPT {
             free(aaprv);
         }
 
-        return std::vector<double>();
+        return std::make_pair(0, std::vector<double>());
+    }
+
+    void Solver::EnumerateStationaryPoints(std::string fileName)
+    {
+        clock_t start = clock();
+        YAML::Node problemDataConfig = YAML::LoadFile(fileName);
+        
+        problemDataConfig["enableUpperBound"] = false;
+        problemDataConfig["enableLowerBound"] = false;
+        problemDataConfig["gradientConstraintType"] = 0;
+
+        int originalDegree = problemDataConfig["hierarchyDegree"].as<int>();
+
+        double lambda_min;
+        std::vector<std::vector<double>> min_vecs;
+        while (true) {
+            ProblemData p;
+            p.LoadConfig(problemDataConfig);
+            p.ConstructSDP();
+            auto [min_cand, tms] = Solve(p);
+            min_vecs = p.ExtractSolutionsFrom(tms, true, min_cand);
+
+            if (min_vecs.size()) {
+                lambda_min = min_cand;
+                if (problemDataConfig["verbose"].as<bool>(false)) std::cout << "minimum eigvalue extracted! hierarchyDegree = " << problemDataConfig["hierarchyDegree"].as<int>() << std::endl;
+                break;
+            }
+            else {
+                problemDataConfig["hierarchyDegree"] = problemDataConfig["hierarchyDegree"].as<int>() + 1;
+                if (problemDataConfig["hierarchyDegree"].as<int>() >= 6) {
+                    std::cout << "[fatal] Stopping Extraction Process because relaxation stage is too large." << std::endl;
+                    return;
+                }
+            }
+        }
+
+
+        problemDataConfig["hierarchyDegree"] = originalDegree;
+        problemDataConfig["maximize"] = true;
+        double lambda_max;
+        std::vector<std::vector<double>> max_vecs;
+        while (true) {
+            ProblemData p;
+            p.LoadConfig(problemDataConfig);
+            p.ConstructSDP();
+            auto [max_cand, tms] = Solve(p);
+            max_vecs = p.ExtractSolutionsFrom(tms, true, max_cand);
+
+            if (max_vecs.size()) {
+                lambda_max = -max_cand;
+                if (problemDataConfig["verbose"].as<bool>(false)) std::cout << "maximum eigvalue extracted! hierarchyDegree = " << problemDataConfig["hierarchyDegree"].as<int>() << std::endl;
+                break;
+            }
+            else {
+                problemDataConfig["hierarchyDegree"] = problemDataConfig["hierarchyDegree"].as<int>() + 1;
+                if (problemDataConfig["hierarchyDegree"].as<int>() >= 6) {
+                    std::cout << "[fatal] Stopping Extraction Process because relaxation stage is too large." << std::endl;
+                    return;
+                }
+            }
+        }
+
+        std::map< double, std::vector<std::vector<double>> > realEigenPairs;
+
+        realEigenPairs[lambda_min] = min_vecs;
+        realEigenPairs[lambda_max] = max_vecs;
+        
+        problemDataConfig["gradientConstraintType"] = 2;
+
+        std::stack<std::pair<double, double>> intervals;
+        intervals.emplace(lambda_min, lambda_max);
+        while (intervals.size()) {
+            auto [lo, hi] = intervals.top(); intervals.pop();
+
+            double mid = (lo + hi) / 2;
+
+            problemDataConfig["hierarchyDegree"] = originalDegree;
+            problemDataConfig["maximize"] = true;
+            problemDataConfig["enableUpperBound"] = true;
+            problemDataConfig["enableLowerBound"] = false;
+            problemDataConfig["upperBoundConstant"] = mid;
+
+            double tmp_lo;
+            std::vector<std::vector<double>> tmp_lo_vecs;
+            while (true) {
+                ProblemData p;
+                p.LoadConfig(problemDataConfig);
+                p.ConstructSDP();
+                auto [min_cand, tms] = Solve(p);
+                tmp_lo_vecs = p.ExtractSolutionsFrom(tms, true, min_cand);
+
+                if (tmp_lo_vecs.size()) {
+                    tmp_lo = min_cand;
+                    if (problemDataConfig["verbose"].as<bool>(false)) std::cout << "minimum eigvalue extracted! hierarchyDegree = " << problemDataConfig["hierarchyDegree"].as<int>() << std::endl;
+                    break;
+                }
+                else {
+                    problemDataConfig["hierarchyDegree"] = problemDataConfig["hierarchyDegree"].as<int>() + 1;
+                    if (problemDataConfig["hierarchyDegree"].as<int>() >= 6) {
+                        std::cout << "Stopping Extraction Process because relaxation stage is too large." << std::endl;
+                        return;
+                    }
+                }
+            }
+
+            if (std::abs(tmp_lo - lo) >= 1e-5) {
+                realEigenPairs[tmp_lo] = tmp_lo_vecs;
+                intervals.emplace(lo, tmp_lo);
+            }
+
+            problemDataConfig["hierarchyDegree"] = originalDegree;
+            problemDataConfig["maximize"] = false;
+            problemDataConfig["enableUpperBound"] = false;
+            problemDataConfig["enableLowerBound"] = true;
+            problemDataConfig["lowerBoundConstant"] = mid;
+
+            double tmp_hi;
+            std::vector<std::vector<double>> tmp_hi_vecs;
+            while (true) {
+                ProblemData p;
+                p.LoadConfig(problemDataConfig);
+                p.ConstructSDP();
+                auto [max_cand, tms] = Solve(p);
+                tmp_hi_vecs = p.ExtractSolutionsFrom(tms, true, max_cand);
+
+                if (max_vecs.size()) {
+                    tmp_hi = -max_cand;
+                    if (problemDataConfig["verbose"].as<bool>(false)) std::cout << "maximum eigvalue extracted! hierarchyDegree = " << problemDataConfig["hierarchyDegree"].as<int>() << std::endl;
+                    break;
+                }
+                else {
+                    problemDataConfig["hierarchyDegree"] = problemDataConfig["hierarchyDegree"].as<int>() + 1;
+                    if (problemDataConfig["hierarchyDegree"].as<int>() >= 6) {
+                        std::cout << "Stopping Extraction Process because relaxation stage is too large." << std::endl;
+                        return;
+                    }
+                }
+            }
+            if (std::abs(hi - tmp_hi) >= 1e-5) {
+                if (std::abs(tmp_lo - tmp_hi) >= 1e-5) realEigenPairs[tmp_hi] = tmp_hi_vecs;
+                intervals.emplace(tmp_hi, hi);
+            }
+        }
+
+        clock_t end = clock();
+        std::cout << "elapsed = " << (double)(end - start) / CLOCKS_PER_SEC << std::endl;
+
+        for (auto it = realEigenPairs.begin(); it != realEigenPairs.end(); it++) {
+            std::cout << it->first << " (num of eigenvector : " << it->second.size() << ")" << std::endl;
+        }
     }
 
     bool Solver::IsTerminationCriterionSatisfied(const ProblemData &problemData, const Eigen::VectorXd &v)

@@ -16,7 +16,7 @@ namespace SPOPT {
             MOSEKSolver(std::string fileName);
 
             void LoadConfig(std::string fileName);
-            std::vector<double> Solve(const ProblemData &problemData);
+            std::pair<double, std::vector<double>> Solve(const ProblemData &problemData);
     };
 }
 #endif //__HSDE_SOLVER_HPP__

@@ -11,5 +11,6 @@
 #include <random>
 #include <set>
 #include <sstream>
+#include <stack>
 #include <vector>
 #endif //__STANDARD_LIBRARIES_HPP__

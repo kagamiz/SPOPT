@@ -20,6 +20,7 @@ int main(int argc, char **argv)
         ("extract,e",                   po::value<std::string>(&fileName),                  "extract solution(s) from a given truncated moment sequence")
         ("view_problem,v",                                                                  "shows the converted problem")
         ("all_real_eigenpairs,a",       po::value<std::string>(&fileName),                  "show all real eigenpair in ascending order of the eigenvalue")
+        ("get_all_real_eigenpairs,g",                                                       "enumerate all real eigenpairs")
     ;
 
     po::variables_map vm;
@@ -32,7 +33,10 @@ int main(int argc, char **argv)
     }
 
     SPOPT::ProblemData problemData(problemDataConfigFileName);
-    problemData.ConstructSDP();
+
+    if (!vm.count("get_all_real_eigenpairs")) {
+        problemData.ConstructSDP();
+    }
     
     if (vm.count("solver_config_file")) {
         YAML::Node solverConfig = YAML::LoadFile(solverConfigFileName);
@@ -45,23 +49,28 @@ int main(int argc, char **argv)
         auto solverData = solvers[solverConfig["solverType"].as<std::string>("MOSEKSolver")];
         solverData->LoadConfig(solverConfigFileName);
 
-        std::vector<double> tms = solverData->Solve(problemData);
-        std::ofstream ofs;
-        ofs.open("tms.txt");
-        for (auto &elem : tms) {
-            ofs << elem << std::endl;
+        if (!vm.count("get_all_real_eigenpairs")) {
+            auto [infimum, tms] = solverData->Solve(problemData);
+            std::ofstream ofs;
+            ofs.open("tms.txt");
+            for (auto &elem : tms) {
+                ofs << elem << std::endl;
+            }
+            ofs.close();
+
+            std::vector<std::vector<double>> sols = problemData.ExtractSolutionsFrom(tms, true, infimum);
+
+            std::cout << "Extracted " << sols.size() << " solution(s)." << std::endl;
+            for (auto sol : sols) {
+                problemData.Analyze(sol);
+            }
+
+            for (auto it = solvers.begin(); it != solvers.end(); it++) {
+                delete it->second;
+            }
         }
-        ofs.close();
-
-        std::vector<std::vector<double>> sols = problemData.ExtractSolutionsFrom(tms);
-
-        std::cout << "Extracted " << sols.size() << " solution(s)." << std::endl;
-        for (auto sol : sols) {
-            problemData.Analyze(sol);
-        }
-
-        for (auto it = solvers.begin(); it != solvers.end(); it++) {
-            delete it->second;
+        else {
+            solverData->EnumerateStationaryPoints(problemDataConfigFileName);
         }
     }
 

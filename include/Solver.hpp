@@ -31,8 +31,8 @@ namespace SPOPT {
             // TODO: error handling
             virtual void LoadConfig(std::string fileName);
 
-            virtual std::vector<double> Solve(const ProblemData &problemData);
-            void EnumerateStationaryPoints(const ProblemData &problemData);
+            virtual std::pair<double, std::vector<double>> Solve(const ProblemData &problemData);
+            void EnumerateStationaryPoints(std::string fileName);
 
             virtual ~Solver(){};
         protected:
@@ -52,6 +52,7 @@ namespace SPOPT {
             virtual double GetDualObjValue(const ProblemData &problemData, const Eigen::VectorXd &v) { return 0; }
             virtual double GetGap(const ProblemData &problemData, const Eigen::VectorXd &v) { return 0; }
             
+            inline const bool verbose(const ProblemData &problemData) { return problemData.verbose; }
             inline const Eigen::SparseMatrix<double> &MatrixA(const ProblemData &problemData) { return problemData.A; }
 
             inline const Eigen::VectorXd &VectorB(const ProblemData &problemData) { return problemData.b; }
