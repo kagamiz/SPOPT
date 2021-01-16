@@ -19,8 +19,8 @@ namespace SPOPT {
         lowerBoundConstant              = problemDataConfig["lowerBoundConstant"].as<double>(0.0);
         enableUpperBound                = problemDataConfig["enableUpperBound"].as<bool>(false);
         upperBoundConstant              = problemDataConfig["upperBoundConstant"].as<double>(0.0);
-        enableOriginalVariableNormBound = problemDataConfig["enableOriginalVariableBound"].as<bool>(false);
-        originalVariableNormBound       = problemDataConfig["originalVariableBound"].as<double>(0.0);
+        enableOriginalVariableNormBound = problemDataConfig["enableOriginalVariableNormBound"].as<bool>(false);
+        originalVariableNormBound       = problemDataConfig["originalVariableNormBound"].as<double>(0.0);
         perturbObjectiveFunction        = problemDataConfig["perturbObjectiveFunction"].as<bool>(false);
         addVariableNonnegativity        = problemDataConfig["addVariableNonnegativity"].as<bool>(false);
         addFirstOrderFullMomentMatrix   = problemDataConfig["addFirstOrderFullMomentMatrix"].as<bool>(false);
@@ -121,7 +121,6 @@ namespace SPOPT {
         if (gradientConstraintType == 3) {
             _AddMinors();
         }
-
         _ConstructNewConstraints();
         _ConstructTermMap();
         _ConstructMatrixA();
@@ -155,13 +154,25 @@ namespace SPOPT {
 
         variableNum++;
         for (int i = 0; i < variableNum; i++) {
-            originalEqualityConstraints.emplace_back(LagrangianFunction.DifferentiateBy(i));
+	    double D = 1;
+	    Polynomial f = LagrangianFunction.DifferentiateBy(i);
+	    for (auto &monomial : f.monomials) {
+		D = std::max(std::abs(D), monomial.second);
+	    }
+	    for (auto &monomial : f.monomials) {
+		monomial.second /= D;
+	    }
+            //originalEqualityConstraints.emplace_back(LagrangianFunction.DifferentiateBy(i));
+	    originalEqualityConstraints.emplace_back(f);
         }
 
         for (int i = 0; i < originalIndexSets.size(); i++) {
             originalIndexSets[i].emplace_back(variableNum - 1);
         }
-        objectiveFunction.maxIndex++;
+	Polynomial TotalNorm = Polynomial(Monomial(1)) - Monomial(Term({variableNum - 1, variableNum - 1}), 1./10000, /* sorted = */true);
+        originalInequalityConstraints.emplace_back(TotalNorm);
+	objectiveFunction.maxIndex++;
+	//objectiveFunction = LagrangianFunction;
     }
 
     void ProblemData::_AddMinors()
@@ -188,7 +199,12 @@ namespace SPOPT {
             }
         }
 
-        for (int i = 0; i < 2 * n - 3; i++) newConstraints[i].Simplify();
+        for (int i = 0; i < 2 * n - 3; i++) {
+	    newConstraints[i].Simplify();
+	    double D = 1;
+	    for (auto &monomial : newConstraints[i].monomials) D = std::max(std::abs(D), monomial.second);
+	    for (auto &monomial : newConstraints[i].monomials) monomial.second /= D;
+	}
 
         originalEqualityConstraints.insert(originalEqualityConstraints.end(), newConstraints.begin(), newConstraints.end());
     }
@@ -201,13 +217,21 @@ namespace SPOPT {
         std::vector<ConstraintType>        unpartitionedConstraintTypes;
 
         if (enableLowerBound) {
-            originalInequalityConstraints.emplace_back(objectiveFunction - Monomial(lowerBoundConstant));
+            Polynomial lb = objectiveFunction - Monomial(lowerBoundConstant);
+	    double D = 1;
+	    for (auto &monomial : lb.monomials) D = std::max(std::abs(monomial.second), D);
+	    for (auto &monomial : lb.monomials) monomial.second /= D;
+	    originalInequalityConstraints.emplace_back(lb);
         }
-
-        if (enableUpperBound) {
-            originalInequalityConstraints.emplace_back(-(objectiveFunction - Monomial(upperBoundConstant)));
+	
+	if (enableUpperBound) {
+            Polynomial ub = -(objectiveFunction - Monomial(upperBoundConstant));
+            double D = 1;
+            for (auto &monomial : ub.monomials) D = std::max(std::abs(monomial.second), D);
+            for (auto &monomial : ub.monomials) monomial.second /= D;
+            originalInequalityConstraints.emplace_back(ub);
         }
-
+	
         std::vector<Polynomial> tmpPolys;
         tmpPolys.insert(tmpPolys.end(), originalEqualityConstraints.begin(), originalEqualityConstraints.end());
         tmpPolys.insert(tmpPolys.end(), originalInequalityConstraints.begin(), originalInequalityConstraints.end());
@@ -340,6 +364,7 @@ namespace SPOPT {
                         convertedInequalityConstraints.emplace_back(unpartitionedConstraint);
                         groupIDOfConvertedInequalityConstraints.emplace_back(j);
                     }
+		    break;
                 }
             }
             if (!foundSet) {
@@ -650,14 +675,14 @@ namespace SPOPT {
 
         std::vector<std::pair<int, Term>> terms;
 	
-	int firstAuxVarID = objectiveFunction.maxIndex + !(gradientConstraintType == 2);
+	//int firstAuxVarID = objectiveFunction.maxIndex + 1;
         for (int i = 0; i < convertedTermSets.size(); i++) {
             int sz = convertedTermSets[i].size();
             for (int j = 0; j < sz; j++) {
                 for (int k = j; k < sz; k++) {
                     Term t1 = convertedTermSets[i][j];
                     Term t2 = convertedTermSets[i][k];
-		    if (t1.size() + t2.size() == 2 * hierarchyDegree && std::min(t1[0], t2[0]) >= firstAuxVarID) continue;
+		    //if (t1.size() + t2.size() == 2 * hierarchyDegree && std::min(t1[0], t2[0]) >= firstAuxVarID) continue;
                     Term merged;
                     int it1 = 0, it2 = 0, len = t1.size() + t2.size();
                     int rank = variableOrderMap.size();
@@ -745,10 +770,11 @@ namespace SPOPT {
             colNumOfA += (n + 1) * (n + 2) / 2;
             psdMatrixSizes.emplace_back(n + 1);
         }
-	int firstAuxVarID = objectiveFunction.maxIndex  + !(gradientConstraintType == 2);
+	//int firstAuxVarID = objectiveFunction.maxIndex + 1;
         for (auto &convertedTermSet : convertedTermSets) {
-            int sz = std::count_if(convertedTermSet.begin(), convertedTermSet.end(), [&](Term x) { return !(x.size() == hierarchyDegree && x[0] >= firstAuxVarID ); } );
-            colNumOfA += sz * (sz + 1) / 2;
+            //int sz = std::count_if(convertedTermSet.begin(), convertedTermSet.end(), [&](Term x) { return !(x.size() == hierarchyDegree && x[0] >= firstAuxVarID ); } );
+            int sz = convertedTermSet.size();
+	    colNumOfA += sz * (sz + 1) / 2;
             psdMatrixSizes.emplace_back(sz);
         }
         // add colNum of A_3
@@ -794,8 +820,8 @@ namespace SPOPT {
                     Term t1 = convertedTermSets[i][j];
                     Term t2 = convertedTermSets[i][k];
                     Term merged;
-		    if (t1.size() == hierarchyDegree && t1[0] >= firstAuxVarID) continue;
-		    if (t2.size() == hierarchyDegree && t2[0] >= firstAuxVarID) continue;
+		    //if (t1.size() == hierarchyDegree && t1[0] >= firstAuxVarID) continue;
+		    //if (t2.size() == hierarchyDegree && t2[0] >= firstAuxVarID) continue;
                     int it1 = 0, it2 = 0, len = t1.size() + t2.size();
                     while (it1 + it2 < len) {
                         if (it2 == t2.size() || (it1 < t1.size() && t1[it1] <= t2[it2])) {
@@ -1061,7 +1087,7 @@ namespace SPOPT {
             os << "push!(pop, " << convertedEqualityConstraint.ToString(/* oneIndexed = */true) << ");" << std::endl;
         }
         os << "order=" << hierarchyDegree << ";" << std::endl;
-        os << "@CPUtime opt,sol,data=cs_tssos_first(pop,x,order,numeq=" << convertedEqualityConstraints.size() << ",TS=false,MomentOne=true,solution=true);" << std::endl;
+        os << "@CPUtime opt,sol,data=cs_tssos_first(pop,x,order,numeq=" << convertedEqualityConstraints.size() << ",TS=\"MD\",MomentOne=true,solution=true);" << std::endl;
 
         if (&os != &std::cout) {
             delete(&os);
@@ -1249,7 +1275,7 @@ namespace SPOPT {
                     MomentMatrix(i, j) = MomentMatrix(j, i) = v[termToInteger[t]];
                 }
             }
-            //std::cout << MomentMatrix << std::endl;
+            std::cout << MomentMatrix << std::endl;
             Eigen::ColPivHouseholderQR<Eigen::MatrixXd> QRDecomp(MomentMatrix);
             QRDecomp.setThreshold(1e-5);
             std::cout << "rank(M_{n,1}(y)) = " << QRDecomp.rank() << std::endl;

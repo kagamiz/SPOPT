@@ -125,7 +125,7 @@ namespace SPOPT {
         SetUpFrom(problemData);
         sol = (ScsSolution *)scs_calloc(1, sizeof(ScsSolution));
         scs(d, k, sol, &info);
-
+	
         std::cout << std::fixed << std::setprecision(2) << "time : " <<  (info.setup_time + info.solve_time) / 1000.0 << std::scientific << std::setprecision(2) << ", opt : " << info.pobj << ", err :" << std::max({info.res_pri, info.res_dual, info.rel_gap})  << ", ite : " << info.iter << std::endl;
 	std::cout << std::resetiosflags(std::ios_base::floatfield); 
         std::vector<double> y(MatrixA(problemData).rows());
