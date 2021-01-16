@@ -163,6 +163,8 @@ namespace SPOPT {
         while (intervals.size()) {
             auto [lo, hi] = intervals.top(); intervals.pop();
 
+            if (problemDataConfig["verbose"]) std::cout << "[" << lo << ", " << hi << "]" << std::endl;
+
             double mid = (lo + hi) / 2;
 
             problemDataConfig["hierarchyDegree"] = originalDegree;
