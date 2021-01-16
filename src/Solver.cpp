@@ -183,7 +183,7 @@ namespace SPOPT {
                 tmp_lo_vecs = p.ExtractSolutionsFrom(tms, true, min_cand);
 
                 if (tmp_lo_vecs.size()) {
-                    tmp_lo = min_cand;
+                    tmp_lo = -min_cand;
                     if (problemDataConfig["verbose"].as<bool>(false)) std::cout << "minimum eigvalue extracted! hierarchyDegree = " << problemDataConfig["hierarchyDegree"].as<int>() << std::endl;
                     break;
                 }
@@ -217,7 +217,7 @@ namespace SPOPT {
                 tmp_hi_vecs = p.ExtractSolutionsFrom(tms, true, max_cand);
 
                 if (max_vecs.size()) {
-                    tmp_hi = -max_cand;
+                    tmp_hi = max_cand;
                     if (problemDataConfig["verbose"].as<bool>(false)) std::cout << "maximum eigvalue extracted! hierarchyDegree = " << problemDataConfig["hierarchyDegree"].as<int>() << std::endl;
                     break;
                 }
