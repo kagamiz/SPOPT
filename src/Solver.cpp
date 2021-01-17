@@ -102,12 +102,14 @@ namespace SPOPT {
 	    ProblemData tmp; tmp.LoadConfig(problemDataConfig);
 	    bool isOddDegree = objectiveDegree(tmp) % 2;
 
+        int originalGradientStrategy = problemDataConfig["gradientConstraintType"].as<int>(3);
+        int originalDegree = problemDataConfig["hierarchyDegree"].as<int>();
+
         problemDataConfig["enableUpperBound"] = false;
         problemDataConfig["enableLowerBound"] = false;
         problemDataConfig["gradientConstraintType"] = 0;
 
 	    int hierarchyDistribution[10] = {0};
-        int originalDegree = problemDataConfig["hierarchyDegree"].as<int>();
 
         double lambda_min;
         std::vector<std::vector<double>> min_vecs;
@@ -138,11 +140,11 @@ namespace SPOPT {
 
         problemDataConfig["hierarchyDegree"] = originalDegree;
         problemDataConfig["maximize"] = true;
-	if (isOddDegree) {
-	    problemDataConfig["gradientConstraintType"] = 3;
-	    problemDataConfig["enableUpperBound"] = true;
-	    problemDataConfig["upperBoundConstant"] = 0;
-	}
+        if (isOddDegree) {
+            problemDataConfig["gradientConstraintType"] =  originalGradientStrategy;
+            problemDataConfig["enableUpperBound"] = true;
+            problemDataConfig["upperBoundConstant"] = 0;
+        }
         double lambda_max;
         std::vector<std::vector<double>> max_vecs;
         while (true) {
@@ -174,7 +176,7 @@ namespace SPOPT {
         realEigenPairs[lambda_min] = min_vecs;
         realEigenPairs[lambda_max] = max_vecs;
         
-        problemDataConfig["gradientConstraintType"] = 3;
+        problemDataConfig["gradientConstraintType"] = originalGradientStrategy;
 
         std::stack<std::pair<double, double>> intervals;
         intervals.emplace(lambda_min, lambda_max);
@@ -190,7 +192,7 @@ namespace SPOPT {
             problemDataConfig["enableUpperBound"] = true;
             problemDataConfig["enableLowerBound"] = false;
             problemDataConfig["upperBoundConstant"] = mid;
-	    int hierarchyMemo;
+	        int hierarchyMemo;
             double tmp_lo;
             std::vector<std::vector<double>> tmp_lo_vecs;
             while (true) {
