@@ -60,7 +60,7 @@ namespace SPOPT {
             (*b)[i] = bref(i) / (VectorD(problemData)[i] * dualScaler(problemData) * scalingFactor(problemData));
         }
         M->constraint("linEq", Expr::mul(A, x), Domain::equalsTo(b));
-        M->solve();
+	M->solve();
 
         M->acceptedSolutionStatus(AccSolutionStatus::Anything);
 

@@ -93,13 +93,17 @@ namespace SPOPT {
 
     void Solver::EnumerateStationaryPoints(std::string fileName)
     {
-        clock_t start = clock();
+	clock_t start = clock();
         YAML::Node problemDataConfig = YAML::LoadFile(fileName);
         
+	ProblemData tmp; tmp.LoadConfig(problemDataConfig);
+	bool isOddDegree = objectiveDegree(tmp) % 2;
+
         problemDataConfig["enableUpperBound"] = false;
         problemDataConfig["enableLowerBound"] = false;
         problemDataConfig["gradientConstraintType"] = 0;
 
+	int hierarchyDistribution[5] = {0};
         int originalDegree = problemDataConfig["hierarchyDegree"].as<int>();
 
         double lambda_min;
@@ -113,6 +117,7 @@ namespace SPOPT {
 
             if (min_vecs.size()) {
                 lambda_min = min_cand;
+		hierarchyDistribution[problemDataConfig["hierarchyDegree"].as<int>() - 1]++;
                 if (problemDataConfig["verbose"].as<bool>(false)) std::cout << "minimum eigvalue extracted! hierarchyDegree = " << problemDataConfig["hierarchyDegree"].as<int>() << std::endl;
                 break;
             }
@@ -128,6 +133,11 @@ namespace SPOPT {
 
         problemDataConfig["hierarchyDegree"] = originalDegree;
         problemDataConfig["maximize"] = true;
+	if (isOddDegree) {
+	    problemDataConfig["gradientConstraintType"] = 3;
+	    problemDataConfig["enableUpperBound"] = true;
+	    problemDataConfig["upperBoundConstant"] = 0;
+	}
         double lambda_max;
         std::vector<std::vector<double>> max_vecs;
         while (true) {
@@ -138,6 +148,7 @@ namespace SPOPT {
             max_vecs = p.ExtractSolutionsFrom(tms, true, max_cand);
 
             if (max_vecs.size()) {
+		hierarchyDistribution[problemDataConfig["hierarchyDegree"].as<int>() - 1]++;
                 lambda_max = -max_cand;
                 if (problemDataConfig["verbose"].as<bool>(false)) std::cout << "maximum eigvalue extracted! hierarchyDegree = " << problemDataConfig["hierarchyDegree"].as<int>() << std::endl;
                 break;
@@ -156,14 +167,14 @@ namespace SPOPT {
         realEigenPairs[lambda_min] = min_vecs;
         realEigenPairs[lambda_max] = max_vecs;
         
-        problemDataConfig["gradientConstraintType"] = 2;
+        problemDataConfig["gradientConstraintType"] = 3;
 
         std::stack<std::pair<double, double>> intervals;
         intervals.emplace(lambda_min, lambda_max);
         while (intervals.size()) {
             auto [lo, hi] = intervals.top(); intervals.pop();
 
-            if (problemDataConfig["verbose"]) std::cout << "[" << lo << ", " << hi << "]" << std::endl;
+            if (problemDataConfig["verbose"].as<bool>(false)) std::cout << "[" << lo << ", " << hi << "]" << std::endl;
 
             double mid = (lo + hi) / 2;
 
@@ -172,7 +183,7 @@ namespace SPOPT {
             problemDataConfig["enableUpperBound"] = true;
             problemDataConfig["enableLowerBound"] = false;
             problemDataConfig["upperBoundConstant"] = mid;
-
+	    int hierarchyMemo;
             double tmp_lo;
             std::vector<std::vector<double>> tmp_lo_vecs;
             while (true) {
@@ -183,6 +194,7 @@ namespace SPOPT {
                 tmp_lo_vecs = p.ExtractSolutionsFrom(tms, true, min_cand);
 
                 if (tmp_lo_vecs.size()) {
+		    hierarchyMemo = problemDataConfig["hierarchyDegree"].as<int>();
                     tmp_lo = -min_cand;
                     if (problemDataConfig["verbose"].as<bool>(false)) std::cout << "minimum eigvalue extracted! hierarchyDegree = " << problemDataConfig["hierarchyDegree"].as<int>() << std::endl;
                     break;
@@ -197,6 +209,7 @@ namespace SPOPT {
             }
 
             if (std::abs(tmp_lo - lo) >= 1e-5) {
+		hierarchyDistribution[hierarchyMemo - 1]++;
                 realEigenPairs[tmp_lo] = tmp_lo_vecs;
                 intervals.emplace(lo, tmp_lo);
             }
@@ -216,7 +229,8 @@ namespace SPOPT {
                 auto [max_cand, tms] = Solve(p);
                 tmp_hi_vecs = p.ExtractSolutionsFrom(tms, true, max_cand);
 
-                if (max_vecs.size()) {
+                if (tmp_hi_vecs.size()) {
+		    hierarchyMemo = problemDataConfig["hierarchyDegree"].as<int>();
                     tmp_hi = max_cand;
                     if (problemDataConfig["verbose"].as<bool>(false)) std::cout << "maximum eigvalue extracted! hierarchyDegree = " << problemDataConfig["hierarchyDegree"].as<int>() << std::endl;
                     break;
@@ -230,7 +244,10 @@ namespace SPOPT {
                 }
             }
             if (std::abs(hi - tmp_hi) >= 1e-5) {
-                if (std::abs(tmp_lo - tmp_hi) >= 1e-5) realEigenPairs[tmp_hi] = tmp_hi_vecs;
+                if (std::abs(tmp_lo - tmp_hi) >= 1e-5) {
+		    hierarchyDistribution[hierarchyMemo - 1]++;
+		    realEigenPairs[tmp_hi] = tmp_hi_vecs;
+		}
                 intervals.emplace(tmp_hi, hi);
             }
         }
@@ -241,6 +258,8 @@ namespace SPOPT {
         for (auto it = realEigenPairs.begin(); it != realEigenPairs.end(); it++) {
             std::cout << it->first << " (num of eigenvector : " << it->second.size() << ")" << std::endl;
         }
+	
+	for (int i = 0; i < 5; i++) std::cout << i + 1 << " : " << hierarchyDistribution[i] << std::endl;
     }
 
     bool Solver::IsTerminationCriterionSatisfied(const ProblemData &problemData, const Eigen::VectorXd &v)

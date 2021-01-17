@@ -180,6 +180,7 @@ namespace SPOPT {
                         monomials[tmp] += coef;
                     }
                 }
+		this->Simplify();
             }
 
             void LoadFromFile(std::string fileName)
@@ -201,6 +202,7 @@ namespace SPOPT {
                         ret.monomials[monomial.first] += monomial.second;
                     }
                 }
+		ret.Simplify();
                 return ret;
             }
 
@@ -216,6 +218,7 @@ namespace SPOPT {
                 for (auto &monomial : ret.monomials) {
                     monomial.second = -monomial.second;
                 }
+		ret.Simplify();
                 return ret;
             }
 

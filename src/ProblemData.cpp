@@ -38,12 +38,10 @@ namespace SPOPT {
 
         if (problemDataConfig["maximize"].as<bool>(false) == true) {
             objectiveFunction = -objectiveFunction;
-            bool oldLowerBound = enableLowerBound;
-            bool oldUpperBound = enableUpperBound;
-            enableLowerBound = oldUpperBound;
-            enableUpperBound = oldLowerBound;
-            lowerBoundConstant = -upperBoundConstant;
-            upperBoundConstant = -lowerBoundConstant;
+	    std::swap(enableLowerBound, enableUpperBound);
+	    std::swap(lowerBoundConstant, upperBoundConstant);
+	    lowerBoundConstant *= -1;
+	    upperBoundConstant *= -1;
         }
 
         if (problemDataConfig["equalityConstraintFiles"]) {
@@ -1293,10 +1291,13 @@ namespace SPOPT {
                     MomentMatrix(i, j) = MomentMatrix(j, i) = v[termToInteger[t]];
                 }
             }
-            //std::cout << MomentMatrix << std::endl;
+	    if (verbose) {
+		std::cout << "Full-order moment matrix of degree 1 : " << std::endl;
+                std::cout << MomentMatrix << std::endl;
+	    }
             Eigen::ColPivHouseholderQR<Eigen::MatrixXd> QRDecomp(MomentMatrix);
             QRDecomp.setThreshold(1e-5);
-            //std::cout << "rank(M_{n,1}(y)) = " << QRDecomp.rank() << std::endl;
+            if (verbose) std::cout << "rank(M_{n,1}(y)) = " << QRDecomp.rank() << std::endl;
             if (QRDecomp.rank() == 1) {
                 std::vector<double> res(n, 0);
                 for (int i = 1; i <= n; i++) {
@@ -1305,7 +1306,7 @@ namespace SPOPT {
                 ret.emplace_back(res);
                 return ret;
             }
-            //std::cout << "rank(M_{n,1})(y) > 1, so we'll continue the ordinary procedure." << std::endl;
+            if (verbose) std::cout << "rank(M_{n,1})(y) > 1, so we'll continue the ordinary procedure." << std::endl;
         }
 
         for (int i = 0; i < convertedIndexSets.size(); i++) {
@@ -1346,10 +1347,13 @@ namespace SPOPT {
 
             Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigenSolver(MomentMatrix);
             if (eigenSolver.info() != Eigen::Success) {
-                //std::cout << "Error occured on eigen decomposition :(" << std::endl;
+                if (verbose) std::cout << "Error occured on eigen decomposition :(" << std::endl;
                 exit(1);
             }
-	    //std::cout << eigenSolver.eigenvalues() << std::endl;
+	    if (verbose) {
+		std::cout << "eigenvalues : " << std::endl;
+	        std::cout << eigenSolver.eigenvalues() << std::endl;
+	    }
             int positiveNum = 0;
             for (int i = sz - 1; i >= 0; i--) {
                 double lambda = eigenSolver.eigenvalues()(i);
@@ -1383,7 +1387,7 @@ namespace SPOPT {
                 int ptr = 0;
                 for (int j = 0; j < colNumOfV; ) {
                     if (ptr == newOrd.size()) {
-                        //std::cout << "[ExtractSolution] [Error] making column echelon form failed" << std::endl;
+                        if (verbose) std::cout << "[ExtractSolution] [Error] making column echelon form failed" << std::endl;
                         return std::vector<std::vector<double>>();
                     }
 
@@ -1407,8 +1411,8 @@ namespace SPOPT {
                     while (ptr < newOrd.size() && abs(V(ptr, j)) < 1e-5 * rowMax) ptr++;
 
                     if (ptr == newOrd.size() || tmpTerms[ptr].size() == hierarchyDegree) {
-                        //std::cout << "[ExtractSolution] [Error] degree of the monomial is too large" << std::endl;
-                        //std::cout << V << std::endl;
+                        if (verbose) std::cout << "[ExtractSolution] [Error] degree of the monomial is too large" << std::endl;
+                        if (verbose) std::cout << V << std::endl;
                         return std::vector<std::vector<double>>();
                     }
 
@@ -1459,8 +1463,8 @@ namespace SPOPT {
             
             Eigen::RealSchur<Eigen::MatrixXd> NSchur(N);
             if (NSchur.matrixT().isUpperTriangular(1e-5) == false) {
-                //std::cout << "[ExtractSolution] [Error] Schur Decompostion contains a complex number (i = " << i << ")" << std::endl;
-                //std::cout << NSchur.matrixT() << std::endl;
+                if (verbose) std::cout << "[ExtractSolution] [Error] Schur Decompostion contains a complex number (i = " << i << ")" << std::endl;
+                if (verbose) std::cout << NSchur.matrixT() << std::endl;
                 return std::vector<std::vector<double>>();
             }
 
@@ -1473,21 +1477,27 @@ namespace SPOPT {
                     solutionCandidates[i][k][j] = Q.col(k).transpose() * Ns[j] * Q.col(k);
                 }
             }
-	    
-            //for (int k = 0; k < colNumOfV; k++) {
-            //    for (int j = 0; j < originalVariableNum; j++) {
-            //        std::cout << convertedIndexSets[i][j] << " = " << solutionCandidates[i][k][j] << ",";
-            //    }
-		    //    std::cout << std::endl;
-            //}
+	    if (verbose) {
+                for (int k = 0; k < colNumOfV; k++) {
+                    for (int j = 0; j < originalVariableNum; j++) {
+                        std::cout << convertedIndexSets[i][j] << " = " << solutionCandidates[i][k][j] << ",";
+                    }
+		    std::cout << std::endl;
+                }
+	    }
 	    
         }
 
         std::vector<std::vector<double>> tmp(n);
 
         _GenerateSolutions(0, solutionCandidates, tmp, ret);
-
+	
+	int cnt = 1;
         for (auto it = ret.begin(); it != ret.end(); ) {
+	    if (verbose) {
+		std::cout << "candidate " << cnt << std::endl; cnt++;
+		Analyze(*it);
+	    }
             std::vector<double> x = *it;
             double fx = objectiveFunction.Evaluate(x);
 
@@ -1528,7 +1538,7 @@ namespace SPOPT {
     void ProblemData::Analyze(std::vector<double> &x)
     {
         std::cout << std::resetiosflags(std::ios_base::floatfield);
-        /*std::cout << "(";
+        std::cout << "(";
         for (int i = 0; i < x.size(); i++) {
             std::cout << x[i];
             if (i + 1 == x.size()) {
@@ -1537,7 +1547,7 @@ namespace SPOPT {
             else {
                 std::cout << ", ";
             }
-        }*/
+        }
 
         std::cout << "f(x) = " << objectiveFunction.Evaluate(x) << std::endl;
 

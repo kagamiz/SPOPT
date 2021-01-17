@@ -52,6 +52,7 @@ namespace SPOPT {
             virtual double GetDualObjValue(const ProblemData &problemData, const Eigen::VectorXd &v) { return 0; }
             virtual double GetGap(const ProblemData &problemData, const Eigen::VectorXd &v) { return 0; }
             
+	    inline const int objectiveDegree(const ProblemData &problemData) { return problemData.objectiveFunction.degree; }
             inline const bool verbose(const ProblemData &problemData) { return problemData.verbose; }
             inline const Eigen::SparseMatrix<double> &MatrixA(const ProblemData &problemData) { return problemData.A; }
 
