@@ -388,6 +388,26 @@ namespace SPOPT {
                 exit(EXIT_FAILURE);
             }
         }
+
+        visited.resize(newVariableID); std::fill(visited.begin(), visited.end(), 0);
+        int n = objectiveFunction.maxIndex + 1;
+        for (int i = 0; i < convertedIndexSets.size(); i++) {
+            auto &convertedIndexSet = convertedIndexSets[i];
+            for (auto &e : convertedIndexSet) {
+                if (e >= n && !visited[e]) {
+                    visited[e] = true;
+                    if (addVariableNonnegativity) {
+                        convertedInequalityConstraints.emplace_back(Term({e}));
+                        groupIDOfConvertedInequalityConstraints.emplace_back(i);
+                    }
+
+                    if (enableOriginalVariableNormBound) {
+                        convertedInequalityConstraints.emplace_back(Polynomial(Monomial(originalVariableNormBound * originalVariableNormBound)) - Monomial(Term({e, e})));
+                        groupIDOfConvertedInequalityConstraints.emplace_back(i);
+                    }
+                }
+            }
+        }
     }
 
     void ProblemData::_TraverseTree(int v, int p, int &newVariableIndex,
