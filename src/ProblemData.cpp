@@ -38,10 +38,10 @@ namespace SPOPT {
 
         if (problemDataConfig["maximize"].as<bool>(false) == true) {
             objectiveFunction = -objectiveFunction;
-	    std::swap(enableLowerBound, enableUpperBound);
-	    std::swap(lowerBoundConstant, upperBoundConstant);
-	    lowerBoundConstant *= -1;
-	    upperBoundConstant *= -1;
+            std::swap(enableLowerBound, enableUpperBound);
+            std::swap(lowerBoundConstant, upperBoundConstant);
+            lowerBoundConstant *= -1;
+            upperBoundConstant *= -1;
         }
 
         if (problemDataConfig["equalityConstraintFiles"]) {
@@ -102,32 +102,8 @@ namespace SPOPT {
                && gradientConstraintType == 0;
     }
 
-    void ProblemData::ConstructSDP()
+    void ProblemData::ConstructSparsification()
     {
-        if (perturbObjectiveFunction) {
-            int n = objectiveFunction.maxIndex + 1;
-            Eigen::VectorXd r = Eigen::VectorXd::Random(n);
-            r /= r.norm();
-            r /= 10.0;
-            for (int i = 0; i < n; i++) {
-                objectiveFunction += Monomial(Term({i}), r(i), /*sorted=*/true);
-            }
-        }
-
-        if (addVariableNonnegativity) {
-            int n = objectiveFunction.maxIndex + 1;
-            for (int i = 0; i < n; i++) {
-                originalInequalityConstraints.emplace_back(Term({i}));
-            }
-        }
-
-        if (enableOriginalVariableNormBound) {
-            int n = objectiveFunction.maxIndex + 1;
-            for (int i = 0; i < n; i++) {
-                originalInequalityConstraints.emplace_back(Polynomial(Monomial(originalVariableNormBound * originalVariableNormBound)) - Monomial(Term{i, i}));
-            }
-        }
-
         if (gradientConstraintType == 2) {
             _AddGradientConstraints();
         }
@@ -136,6 +112,41 @@ namespace SPOPT {
             _AddMinors();
         }
         _ConstructNewConstraints();
+    }
+
+    void ProblemData::ConstructSDP()
+    {
+        if (perturbObjectiveFunction) {
+            int n = objectiveFunction.maxIndex + 1;
+            Eigen::VectorXd r = Eigen::VectorXd::Random(n);
+            r /= r.norm();
+            r /= 10.0;
+            for (int i = 0; i < n; i++) {
+                objectiveFunction += Monomial(Term({i}), r(i), true);
+            }
+        }
+
+        ConstructSparsification();
+
+        std::set<int> visited;
+        for (int i = 0; i < convertedIndexSets.size(); i++) {
+            auto &convertedIndexSet = convertedIndexSets[i];
+            for (auto &e : convertedIndexSet) {
+                if (visited.find(e) == visited.end()) {
+                    visited.insert(e);
+                    if (addVariableNonnegativity) {
+                        convertedInequalityConstraints.emplace_back(Term({e}));
+                        groupIDOfConvertedInequalityConstraints.emplace_back(i);
+                    }
+
+                    if (enableOriginalVariableNormBound) {
+                        convertedInequalityConstraints.emplace_back(Polynomial(Monomial(originalVariableNormBound * originalVariableNormBound)) - Monomial(Term({e, e})));
+                        groupIDOfConvertedInequalityConstraints.emplace_back(i);
+                    }
+                }
+            }
+        }
+
         _ConstructTermMap();
         _ConstructMatrixA();
         _ConstructVectorB();
@@ -170,25 +181,24 @@ namespace SPOPT {
 
         variableNum++;
         for (int i = 0; i < variableNum; i++) {
-	    double D = 1;
-	    Polynomial f = LagrangianFunction.DifferentiateBy(i);
-	    for (auto &monomial : f.monomials) {
-		D = std::max(std::abs(D), monomial.second);
-	    }
-	    for (auto &monomial : f.monomials) {
-		monomial.second /= D;
-	    }
-            //originalEqualityConstraints.emplace_back(LagrangianFunction.DifferentiateBy(i));
-	    originalEqualityConstraints.emplace_back(f);
+            double D = 1;
+            Polynomial f = LagrangianFunction.DifferentiateBy(i);
+            for (auto &monomial : f.monomials) {
+                D = std::max(std::abs(D), monomial.second);
+            }
+            for (auto &monomial : f.monomials) {
+                monomial.second /= D;
+            }
+            originalEqualityConstraints.emplace_back(f);
         }
 
         for (int i = 0; i < originalIndexSets.size(); i++) {
             originalIndexSets[i].emplace_back(variableNum - 1);
         }
-	Polynomial TotalNorm = Polynomial(Monomial(1)) - Monomial(Term({variableNum - 1, variableNum - 1}), 1./10000, /* sorted = */true);
-        originalInequalityConstraints.emplace_back(TotalNorm);
+	    //Polynomial TotalNorm = Polynomial(Monomial(1)) - Monomial(Term({variableNum - 1, variableNum - 1}), 1./10000, /* sorted = */true);
+        //originalInequalityConstraints.emplace_back(TotalNorm);
 	    objectiveFunction.maxIndex++;
-	//objectiveFunction = LagrangianFunction;
+	    //objectiveFunction = LagrangianFunction;
     }
 
     void ProblemData::_AddMinors()
@@ -216,11 +226,11 @@ namespace SPOPT {
         }
 
         for (int i = 0; i < 2 * n - 3; i++) {
-	    newConstraints[i].Simplify();
-	    double D = 1;
-	    for (auto &monomial : newConstraints[i].monomials) D = std::max(std::abs(D), monomial.second);
-	    for (auto &monomial : newConstraints[i].monomials) monomial.second /= D;
-	}
+            newConstraints[i].Simplify();
+            double D = 1;
+            for (auto &monomial : newConstraints[i].monomials) D = std::max(std::abs(D), monomial.second);
+            for (auto &monomial : newConstraints[i].monomials) monomial.second /= D;
+	    }
 
         originalEqualityConstraints.insert(originalEqualityConstraints.end(), newConstraints.begin(), newConstraints.end());
     }
@@ -234,13 +244,13 @@ namespace SPOPT {
 
         if (enableLowerBound) {
             Polynomial lb = objectiveFunction - Monomial(lowerBoundConstant);
-	    double D = 1;
-	    for (auto &monomial : lb.monomials) D = std::max(std::abs(monomial.second), D);
-	    for (auto &monomial : lb.monomials) monomial.second /= D;
-	    originalInequalityConstraints.emplace_back(lb);
+            double D = 1;
+            for (auto &monomial : lb.monomials) D = std::max(std::abs(monomial.second), D);
+            for (auto &monomial : lb.monomials) monomial.second /= D;
+            originalInequalityConstraints.emplace_back(lb);
         }
 	
-	if (enableUpperBound) {
+	    if (enableUpperBound) {
             Polynomial ub = -(objectiveFunction - Monomial(upperBoundConstant));
             double D = 1;
             for (auto &monomial : ub.monomials) D = std::max(std::abs(monomial.second), D);
@@ -380,7 +390,7 @@ namespace SPOPT {
                         convertedInequalityConstraints.emplace_back(unpartitionedConstraint);
                         groupIDOfConvertedInequalityConstraints.emplace_back(j);
                     }
-		    break;
+		            break;
                 }
             }
             if (!foundSet) {
@@ -389,25 +399,6 @@ namespace SPOPT {
             }
         }
 
-        visited.resize(newVariableID); std::fill(visited.begin(), visited.end(), 0);
-        int n = objectiveFunction.maxIndex + 1;
-        for (int i = 0; i < convertedIndexSets.size(); i++) {
-            auto &convertedIndexSet = convertedIndexSets[i];
-            for (auto &e : convertedIndexSet) {
-                if (e >= n && !visited[e]) {
-                    visited[e] = true;
-                    if (addVariableNonnegativity) {
-                        convertedInequalityConstraints.emplace_back(Term({e}));
-                        groupIDOfConvertedInequalityConstraints.emplace_back(i);
-                    }
-
-                    if (enableOriginalVariableNormBound) {
-                        convertedInequalityConstraints.emplace_back(Polynomial(Monomial(originalVariableNormBound * originalVariableNormBound)) - Monomial(Term({e, e})));
-                        groupIDOfConvertedInequalityConstraints.emplace_back(i);
-                    }
-                }
-            }
-        }
     }
 
     void ProblemData::_TraverseTree(int v, int p, int &newVariableIndex,
@@ -916,12 +907,12 @@ namespace SPOPT {
                                 merged.push_back(t3[it3]); it3++;
                             }
                         }
-			if (termToInteger.find(merged) == termToInteger.end()) {
-			    for (auto &e : merged) {
-				std::cout << e << ", ";
-			    }
-			    std::cout << std::endl;
-			}
+                        if (termToInteger.find(merged) == termToInteger.end()) {
+                            for (auto &e : merged) {
+                                std::cout << e << ", ";
+                            }
+                            std::cout << std::endl;
+                        }
                         int id = termToInteger[merged];
                         tripletList.emplace_back(id, leftmostPosition, coef * (j != k ? sq2 : 1));
                     }
@@ -1130,6 +1121,63 @@ namespace SPOPT {
         }
     }
 
+    void ProblemData::OutputGMSFile(std::string fileName)
+    {
+        std::ostream &os = (fileName != "" ? *(new std::ofstream(fileName)) : std::cout);
+
+        int n = objectiveFunction.maxIndex;
+        for (auto &convertedIndexSet : convertedIndexSets) {
+            n = std::max(n, *std::max_element(convertedIndexSet.begin(), convertedIndexSet.end()));
+        }
+        n += 1;
+
+        os << "Variables objvar,";
+        for (int i = 1; i <= n; i++) {
+            os << "x" << i << ",;"[i == n];
+        }
+        os << "\n";
+
+        if (addVariableNonnegativity) {
+            os << "Positive Variables ";
+            for (int i = 1; i <= n; i++) {
+                os << "x" << i << ",;"[i == n];
+            }
+            os << "\n";
+        }
+
+        int m = 1 + convertedEqualityConstraints.size() + convertedInequalityConstraints.size();
+        os << "Equations ";
+        for (int i = 1; i <= m; i++) {
+            os << "e" << i << ",;"[i == m];
+        }
+        os << "\n";
+        
+        Polynomial neg = -objectiveFunction;
+        os << "e1.. objvar" << neg.ToStringGMS(/* withSign = */true) << " =E= 0;" << std::endl;
+
+        int ctr = 1;
+        for (int i = 0; i < convertedEqualityConstraints.size(); i++) {
+            os << "e" << ++ctr << ".. " << convertedEqualityConstraints[i].ToStringGMS() << " =E= 0;" << std::endl;
+        }
+
+        for (int i = 0; i < convertedInequalityConstraints.size(); i++) {
+            os << "e" << ++ctr << ".. " << convertedInequalityConstraints[i].ToStringGMS() << " =G= 0;" << std::endl;
+        }
+
+        if (enableOriginalVariableNormBound) {
+            for (int i = 1; i <= n; i++) {
+                if (!addVariableNonnegativity) {
+                    os << "x" << i << ".lo = " << -originalVariableNormBound << ";" << std::endl;
+                }
+                os << "x" << i << ".up = " << originalVariableNormBound << ";" << std::endl;
+            }
+        }
+
+        if (&os != &std::cout) {
+            delete(&os);
+        }
+    }
+
     void ProblemData::OutputMatFile(std::string fileName)
     {
         #ifdef __BUILD_WITH_MATLAB__
@@ -1260,16 +1308,16 @@ namespace SPOPT {
     void ProblemData::_GenerateSolutions(int cur, std::vector<std::vector<std::vector<double>>> &solutionCandidates, std::vector<std::vector<double>> &tmp, std::vector<std::vector<double>> &answers)
     {
         if (cur == solutionCandidates.size()) {
-	    std::vector<double> ansCand(tmp.size());
-	    for (int i = 0; i < ansCand.size(); i++) {
-		if (tmp[i].size() == 0) return;
-		ansCand[i] = std::accumulate(tmp[i].begin(), tmp[i].end(), 0.0) * 1. / tmp[i].size();
-	    }
+	        std::vector<double> ansCand(tmp.size());
+	        for (int i = 0; i < ansCand.size(); i++) {
+		        if (tmp[i].size() == 0) return;
+		        ansCand[i] = std::accumulate(tmp[i].begin(), tmp[i].end(), 0.0) * 1. / tmp[i].size();
+	        }
             answers.emplace_back(ansCand);
             return;
         }
 	
-	std::vector<int> addInd;
+	    std::vector<int> addInd;
 
         for (auto solutionCandidate : solutionCandidates[cur]) {
             bool compatible = true;
@@ -1281,15 +1329,15 @@ namespace SPOPT {
                 }
                 else {
                     tmp[ind].emplace_back(solutionCandidate[i]);
-		    addInd.emplace_back(ind);
+		            addInd.emplace_back(ind);
                 }
             }
             if (compatible) {
                 _GenerateSolutions(cur + 1, solutionCandidates, tmp, answers);
             }
             for (int i = 0; i < addInd.size(); i++) {
-		tmp[addInd[i]].pop_back();
-	    }
+		        tmp[addInd[i]].pop_back();
+	        }
       	    addInd.clear();
         }
     }
@@ -1311,10 +1359,10 @@ namespace SPOPT {
                     MomentMatrix(i, j) = MomentMatrix(j, i) = v[termToInteger[t]];
                 }
             }
-	    if (verbose) {
-		std::cout << "Full-order moment matrix of degree 1 : " << std::endl;
+            if (verbose) {
+                std::cout << "Full-order moment matrix of degree 1 : " << std::endl;
                 std::cout << MomentMatrix << std::endl;
-	    }
+            }
             Eigen::ColPivHouseholderQR<Eigen::MatrixXd> QRDecomp(MomentMatrix);
             QRDecomp.setThreshold(1e-5);
             if (verbose) std::cout << "rank(M_{n,1}(y)) = " << QRDecomp.rank() << std::endl;
@@ -1370,19 +1418,19 @@ namespace SPOPT {
                 if (verbose) std::cout << "Error occured on eigen decomposition :(" << std::endl;
                 exit(1);
             }
-	    if (verbose) {
-		std::cout << "eigenvalues : " << std::endl;
-	        std::cout << eigenSolver.eigenvalues() << std::endl;
-	    }
+            if (verbose) {
+                std::cout << "eigenvalues : " << std::endl;
+                std::cout << eigenSolver.eigenvalues() << std::endl;
+            }
             int positiveNum = 0;
             for (int i = sz - 1; i >= 0; i--) {
                 double lambda = eigenSolver.eigenvalues()(i);
                 if (lambda / eigenSolver.eigenvalues()(sz - 1) >= 1e-2) {
                     positiveNum++;
                 }
-		else {
-		    break;
-		}
+                else {
+                    break;
+                }
             }
             
             Eigen::MatrixXd V = Eigen::MatrixXd::Zero(sz, positiveNum);
@@ -1497,27 +1545,26 @@ namespace SPOPT {
                     solutionCandidates[i][k][j] = Q.col(k).transpose() * Ns[j] * Q.col(k);
                 }
             }
-	    if (verbose) {
+            if (verbose) {
                 for (int k = 0; k < colNumOfV; k++) {
                     for (int j = 0; j < originalVariableNum; j++) {
                         std::cout << convertedIndexSets[i][j] << " = " << solutionCandidates[i][k][j] << ",";
                     }
-		    std::cout << std::endl;
+                    std::cout << std::endl;
                 }
-	    }
-	    
+            }
         }
 
         std::vector<std::vector<double>> tmp(n);
 
         _GenerateSolutions(0, solutionCandidates, tmp, ret);
 	
-	int cnt = 1;
+	    int cnt = 1;
         for (auto it = ret.begin(); it != ret.end(); ) {
-	    if (verbose) {
-		std::cout << "candidate " << cnt << std::endl; cnt++;
-		Analyze(*it);
-	    }
+            if (verbose) {
+                std::cout << "candidate " << cnt << std::endl; cnt++;
+                Analyze(*it);
+            }
             std::vector<double> x = *it;
             double fx = objectiveFunction.Evaluate(x);
 
@@ -1530,7 +1577,6 @@ namespace SPOPT {
             if (std::abs(norm - 1) >= 1e-5) {
                 it = ret.erase(it); continue;
             }
-
 
             double nablaFNorm = 0;
             std::vector<double> dx(x.size());

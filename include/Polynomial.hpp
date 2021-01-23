@@ -84,6 +84,22 @@ namespace SPOPT {
                 return oss.str();
             }
 
+            std::string ToStringGMS(bool withSign = true)
+            {
+                std::ostringstream oss;
+                if (withSign) {
+                    oss << std::showpos << coefficient;
+                    oss << std::noshowpos;
+                }
+                else {
+                    oss << coefficient;
+                }
+                for (int i = 0; i < term.size();i++) {
+                    oss << "*x" << term[i] + 1;
+                }
+                return oss.str();
+            }
+
             double Evaluate(std::vector<double> &values)
             {
                 double ret = coefficient;
@@ -180,7 +196,7 @@ namespace SPOPT {
                         monomials[tmp] += coef;
                     }
                 }
-		this->Simplify();
+		        this->Simplify();
             }
 
             void LoadFromFile(std::string fileName)
@@ -202,7 +218,7 @@ namespace SPOPT {
                         ret.monomials[monomial.first] += monomial.second;
                     }
                 }
-		ret.Simplify();
+		        ret.Simplify();
                 return ret;
             }
 
@@ -218,7 +234,7 @@ namespace SPOPT {
                 for (auto &monomial : ret.monomials) {
                     monomial.second = -monomial.second;
                 }
-		ret.Simplify();
+		        ret.Simplify();
                 return ret;
             }
 
@@ -275,6 +291,17 @@ namespace SPOPT {
                 int outputNum = 0;
                 for (auto monomial : monomials) {
                     res += Monomial(monomial.first, monomial.second).ToString(/* oneIndexed = */oneIndexed, /* withSign = */outputNum != 0);
+                    outputNum++;
+                }
+                return outputNum == 0 ? "0" : res;
+            }
+
+            std::string ToStringGMS(bool withSign = true)
+            {
+                std::string res;
+                int outputNum = 0;
+                for (auto monomial : monomials) {
+                    res += Monomial(monomial.first, monomial.second).ToStringGMS(/* withSign = */ withSign | (outputNum != 0));
                     outputNum++;
                 }
                 return outputNum == 0 ? "0" : res;

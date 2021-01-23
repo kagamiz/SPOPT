@@ -15,12 +15,13 @@ int main(int argc, char **argv)
         ("help",                                                                            "print this help message")
         ("problem_data_config_file,p",	po::value<std::string>(&problemDataConfigFileName), "path of the problem data configuration file")
         ("solver_config_file,s",	    po::value<std::string>(&solverConfigFileName),	    "path of the solver configuration file")
-        ("tssos,t",                     po::value<std::string>(&fileName),                  "converts problem data to a tssos format")
-        ("mat,m",                       po::value<std::string>(&fileName),                  "converts problem data to a matlab format")
+        ("tssos,t",                     po::value<std::string>(&fileName),                  "converts problem data into a tssos format")
+        ("mat,m",                       po::value<std::string>(&fileName),                  "converts problem data into a matlab format")
         ("extract,e",                   po::value<std::string>(&fileName),                  "extract solution(s) from a given truncated moment sequence")
         ("view_problem,v",                                                                  "shows the converted problem")
         ("all_real_eigenpairs,a",       po::value<std::string>(&fileName),                  "show all real eigenpair in ascending order of the eigenvalue")
         ("get_all_real_eigenpairs,g",                                                       "enumerate all real eigenpairs")
+        ("GMS,G",                       po::value<std::string>(&fileName),                  "converts problem data into a GMS format")
     ;
 
     po::variables_map vm;
@@ -32,10 +33,16 @@ int main(int argc, char **argv)
         std::exit(EXIT_SUCCESS);
     }
 
-    SPOPT::ProblemData problemData(problemDataConfigFileName);
+    SPOPT::ProblemData problemData;
 
     if (!vm.count("get_all_real_eigenpairs")) {
-        problemData.ConstructSDP();
+        problemData.LoadConfig(problemDataConfigFileName);
+        if (vm.count("GMS")) {
+            problemData.ConstructSparsification();
+        }
+        else {
+            problemData.ConstructSDP();
+        }
     }
     
     if (vm.count("solver_config_file")) {
@@ -82,6 +89,10 @@ int main(int argc, char **argv)
 
     if (vm.count("tssos")) {
         problemData.OutputJuliaFile(fileName);
+    }
+
+    if (vm.count("GMS")) {
+        problemData.OutputGMSFile(fileName);
     }
 
     if (vm.count("extract")) {

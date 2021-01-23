@@ -36,6 +36,7 @@ namespace SPOPT {
             void LoadConfig(std::string fileName);
             void LoadConfig(YAML::Node &problemDataConfig);
 
+            void ConstructSparsification();
             void ConstructSDP();
             void ShowPOP();
 
@@ -48,6 +49,8 @@ namespace SPOPT {
             void OutputJuliaFile(std::string fileName = "");
             // Output the Matrix A, b, c, and cone information
             void OutputMatFile(std::string fileName = "outfile.mat");
+            // Output polynomial data
+            void OutputGMSFile(std::string fileName = "poly.gms");
 
             // returns whether the problem is unconstrained problem (i.e. K = \mathbb{R}^n) or not.
             bool IsUnconstrained() const;
