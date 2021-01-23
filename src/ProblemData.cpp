@@ -559,7 +559,7 @@ namespace SPOPT {
 
                     Polynomial poly;
                     if (childNum > 1) {
-                        if (v != 0) {
+                        if (!(v == 0 && i == 0)) {
                             poly += Monomial(Term({prvConstraintVariables[j]}), -1, /* sorted = */true);
                         }
                         poly += Monomial(Term({constraintIDs[j][nx]}), 1, /* sorted = */true);
@@ -573,7 +573,7 @@ namespace SPOPT {
                         newVariableIndex++;
                     }
                     else {
-                        if (v != 0) {
+                        if (!(v == 0 && i == 0)) {
                             poly += Monomial(Term({prvConstraintVariables[j]}), -1, /* sorted = */true);
                         }
                         poly += Monomial(Term({constraintIDs[j][nx]}), 1, /* sorted = */true);
