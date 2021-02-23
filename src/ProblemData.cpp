@@ -128,13 +128,14 @@ namespace SPOPT {
 
         ConstructSparsification();
 
+	int n = objectiveFunction.maxIndex;
         std::set<int> visited;
         for (int i = 0; i < convertedIndexSets.size(); i++) {
             auto &convertedIndexSet = convertedIndexSets[i];
             for (auto &e : convertedIndexSet) {
                 if (visited.find(e) == visited.end()) {
                     visited.insert(e);
-                    if (addVariableNonnegativity) {
+                    if (addVariableNonnegativity && e <= n) {
                         convertedInequalityConstraints.emplace_back(Term({e}));
                         groupIDOfConvertedInequalityConstraints.emplace_back(i);
                     }
@@ -1125,7 +1126,7 @@ namespace SPOPT {
     {
         std::ostream &os = (fileName != "" ? *(new std::ofstream(fileName)) : std::cout);
 
-        int n = objectiveFunction.maxIndex;
+        int n = objectiveFunction.maxIndex, n2 = n + 1;
         for (auto &convertedIndexSet : convertedIndexSets) {
             n = std::max(n, *std::max_element(convertedIndexSet.begin(), convertedIndexSet.end()));
         }
@@ -1139,8 +1140,8 @@ namespace SPOPT {
 
         if (addVariableNonnegativity) {
             os << "Positive Variables ";
-            for (int i = 1; i <= n; i++) {
-                os << "x" << i << ",;"[i == n];
+            for (int i = 1; i <= n2; i++) {
+                os << "x" << i << ",;"[i == n2];
             }
             os << "\n";
         }
@@ -1166,7 +1167,7 @@ namespace SPOPT {
 
         if (enableOriginalVariableNormBound) {
             for (int i = 1; i <= n; i++) {
-                if (!addVariableNonnegativity) {
+                if (!addVariableNonnegativity || i >= n2 + 1) {
                     os << "x" << i << ".lo = " << -originalVariableNormBound << ";" << std::endl;
                 }
                 os << "x" << i << ".up = " << originalVariableNormBound << ";" << std::endl;
@@ -1360,8 +1361,8 @@ namespace SPOPT {
                 }
             }
             if (verbose) {
-                std::cout << "Full-order moment matrix of degree 1 : " << std::endl;
-                std::cout << MomentMatrix << std::endl;
+                //std::cout << "Full-order moment matrix of degree 1 : " << std::endl;
+                //std::cout << MomentMatrix << std::endl;
             }
             Eigen::ColPivHouseholderQR<Eigen::MatrixXd> QRDecomp(MomentMatrix);
             QRDecomp.setThreshold(1e-5);
@@ -1419,8 +1420,8 @@ namespace SPOPT {
                 exit(1);
             }
             if (verbose) {
-                std::cout << "eigenvalues : " << std::endl;
-                std::cout << eigenSolver.eigenvalues() << std::endl;
+                //std::cout << "eigenvalues : " << std::endl;
+                //std::cout << eigenSolver.eigenvalues() << std::endl;
             }
             int positiveNum = 0;
             for (int i = sz - 1; i >= 0; i--) {
