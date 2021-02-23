@@ -1176,6 +1176,25 @@ namespace SPOPT {
         if (&os != &std::cout) {
             delete(&os);
         }
+
+        std::ostream &clique_os = (fileName != "" ? *(new std::ofstream(regex_replace(fileName, std::regex("\\.gms"), "-clique.txt"))) : std::cout);
+        clique_os << convertedIndexSets.size() << std::endl;
+        for (auto convertedIndexSet : convertedIndexSets) {
+            clique_os << convertedIndexSet.size() << std::endl;
+            int cnt = 0;
+            for (auto elem : convertedIndexSet) {
+                if (cnt > 0) {
+                    clique_os << " ";
+                }
+                clique_os << elem + 1;
+                cnt++;
+            }
+            clique_os << std::endl;
+        }
+
+        if (&clique_os != &std::cout) {
+            delete(&clique_os);
+        }
     }
 
     void ProblemData::OutputMatFile(std::string fileName)
