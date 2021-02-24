@@ -88,6 +88,9 @@ namespace SPOPT {
             free(aaprv);
         }
 
+        std::cout << "approximate minimal value (P) : " << GetPrimalObjValue(problemData, v_i) << std::endl;
+        std::cout << "approximate minimal value (D) : " << GetDualObjValue(problemData, v_i) << std::endl;
+
         return std::make_pair(GetPrimalObjValue(problemData, v_i), GetDualVariable(problemData, v_i));
     }
 

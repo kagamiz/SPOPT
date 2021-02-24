@@ -249,6 +249,9 @@ namespace SPOPT {
         }
 
         Eigen::VectorXd y = vecU.segment(MatrixA(problemData).cols(), MatrixA(problemData).rows()) / vecU(vecLength - 1);
+        for (int i = 0; i < MatrixA(problemData).rows(); i++) {
+            y(i) *= (dualScaler(problemData) * VectorD(problemData)[i]);
+        }
         return std::vector<double>(y.data(), y.data() + y.size());
     }
 }

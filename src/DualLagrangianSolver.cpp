@@ -1,6 +1,7 @@
 #include "DualLagrangianSolver.hpp"
 
 namespace SPOPT {
+    static const double sq2 = sqrt(2);
 
     DualLagrangianSolver::DualLagrangianSolver(std::string fileName)
     {
@@ -42,10 +43,12 @@ namespace SPOPT {
 
         int leftmostPosition = 1;
         for (auto psdMatrixSize : psdMatrixSizes(problemData)) {
+            int acc = 0;
             for (int i = 0; i < psdMatrixSize; i++) {
-                x(leftmostPosition + i * psdMatrixSize + i) = 1;
+                x(leftmostPosition + acc) = 1;
+                acc += psdMatrixSize - i;
             }
-            leftmostPosition += psdMatrixSize * psdMatrixSize;
+            leftmostPosition += psdMatrixSize * (psdMatrixSize + 1) / 2;
         }
 
         Eigen::VectorXd v(x.size() + y.size() + z.size());
@@ -86,13 +89,14 @@ namespace SPOPT {
         for (auto psdMatrixSize : psdMatrixSizes(problemData)) {
             Eigen::MatrixXd tmpMatrix(psdMatrixSize, psdMatrixSize);
 
+            int ptr = 0;
             for (int i = 0; i < psdMatrixSize; i++) {
-                for (int j = 0; j < psdMatrixSize; j++) {
-                    tmpMatrix(i, j) = tmpZ(leftmostPosition + i * psdMatrixSize + j);
-                    if (i > j) {
-                        double p = tmpMatrix(i, j), q = tmpMatrix(j, i);
-                        tmpMatrix(i, j) = tmpMatrix(j, i) = (p + q) / 2;
+                for (int j = i; j < psdMatrixSize; j++) {
+                    tmpMatrix(i, j) = tmpZ(leftmostPosition + ptr) * (i != j ? sq2 / 2 : 1);
+                    if (i != j) {
+                        tmpMatrix(j, i) = tmpMatrix(i, j);
                     }
+                    ptr++;
                 }
             }
 
@@ -114,12 +118,14 @@ namespace SPOPT {
                 }
             }
 
+            ptr = 0;
             for (int i = 0; i < psdMatrixSize; i++) {
-                for (int j = 0; j < psdMatrixSize; j++) {
-                    newZ(leftmostPosition + i * psdMatrixSize + j) = tmpMatrix2(i, j);
+                for (int j = i; j < psdMatrixSize; j++) {
+                    newZ(leftmostPosition + ptr) = tmpMatrix2(i, j) * (i != j ? sq2 : 1);
+                    ptr++;
                 }
             }
-            leftmostPosition += psdMatrixSize * psdMatrixSize;
+            leftmostPosition += psdMatrixSize * (psdMatrixSize + 1) / 2;
         }
 
         Eigen::VectorXd newX = curX + (newZ - At * newY + VectorC(problemData)) / dualParam.mu;
@@ -134,7 +140,7 @@ namespace SPOPT {
         Eigen::VectorXd primalResidual = MatrixA(problemData) * x - VectorB(problemData);
 
         for (int i = 0; i < MatrixA(problemData).rows(); i++) {
-            primalResidual(i) /= (dualScaler(problemData) * VectorD(problemData)(i));
+            primalResidual(i) /= (scalingFactor(problemData) * dualScaler(problemData) * VectorD(problemData)(i));
         }
 
         return primalResidual.norm() / (1 + originalBNorm(problemData));
@@ -148,7 +154,7 @@ namespace SPOPT {
         Eigen::VectorXd dualResidual = z - At * y + VectorC(problemData);
 
         for (int i = 0; i < MatrixA(problemData).cols(); i++) {
-            dualResidual(i) /= (primalScaler(problemData) * VectorE(problemData)(i));
+            dualResidual(i) /= (scalingFactor(problemData) * primalScaler(problemData) * VectorE(problemData)(i));
         }
 
         return dualResidual.norm() / (1 + originalCNorm(problemData));
@@ -157,13 +163,13 @@ namespace SPOPT {
     double DualLagrangianSolver::GetPrimalObjValue(const ProblemData &problemData, const Eigen::VectorXd &v)
     {
         Eigen::VectorXd x = v.head(MatrixA(problemData).cols());
-        return VectorC(problemData).dot(x) / (primalScaler(problemData) * dualScaler(problemData));
+        return VectorC(problemData).dot(x) / (scalingFactor(problemData) * primalScaler(problemData) * dualScaler(problemData));
     }
 
     double DualLagrangianSolver::GetDualObjValue(const ProblemData &problemData, const Eigen::VectorXd &v)
     {
         Eigen::VectorXd y = v.segment(MatrixA(problemData).cols(), MatrixA(problemData).rows());
-        return VectorB(problemData).dot(y) / (primalScaler(problemData) * dualScaler(problemData));
+        return VectorB(problemData).dot(y) / (scalingFactor(problemData) * primalScaler(problemData) * dualScaler(problemData));
     }
 
     double DualLagrangianSolver::GetGap(const ProblemData &problemData, const Eigen::VectorXd &v)
@@ -203,6 +209,9 @@ namespace SPOPT {
     std::vector<double> DualLagrangianSolver::GetDualVariable(const ProblemData &problemData, const Eigen::VectorXd &v)
     {
         Eigen::VectorXd y = v.segment(MatrixA(problemData).cols(), MatrixA(problemData).rows());
+        for (int i = 0; i < MatrixA(problemData).rows(); i++) {
+            y(i) *= (dualScaler(problemData) * VectorD(problemData)[i]);
+        }
         return std::vector<double>(y.data(), y.data() + y.size());
     }
 }
