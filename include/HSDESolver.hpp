@@ -36,6 +36,8 @@ namespace SPOPT {
             double GetDualObjValue(const ProblemData &problemData, const Eigen::VectorXd &v);
             double GetGap(const ProblemData &problemData, const Eigen::VectorXd &v);
 
+            std::vector<double> GetDualVariable(const ProblemData &problemData, const Eigen::VectorXd &v);
+
             HSDEParameter hsdeParam;
 
             Eigen::VectorXd zeta;

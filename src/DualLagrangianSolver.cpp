@@ -199,4 +199,10 @@ namespace SPOPT {
             }
         }
     }
+
+    std::vector<double> DualLagrangianSolver::GetDualVariable(const ProblemData &problemData, const Eigen::VectorXd &v)
+    {
+        Eigen::VectorXd y = v.segment(MatrixA(problemData).cols(), MatrixA(problemData).rows());
+        return std::vector<double>(y.data(), y.data() + y.size());
+    }
 }

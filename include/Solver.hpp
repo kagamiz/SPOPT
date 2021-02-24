@@ -50,6 +50,7 @@ namespace SPOPT {
             virtual double GetDualInfeasibility(const ProblemData &problemData, const Eigen::VectorXd &v) { return 0; }
             virtual double GetPrimalObjValue(const ProblemData &problemData, const Eigen::VectorXd &v) { return 0; }
             virtual double GetDualObjValue(const ProblemData &problemData, const Eigen::VectorXd &v) { return 0; }
+            virtual std::vector<double> GetDualVariable(const ProblemData &problemData, const Eigen::VectorXd &v) { return std::vector<double>(); }
             virtual double GetGap(const ProblemData &problemData, const Eigen::VectorXd &v) { return 0; }
             
 	        inline const int objectiveDegree(const ProblemData &problemData) { return problemData.objectiveFunction.degree; }

@@ -26,7 +26,7 @@ Also, following C++ libraries are used in the source code. Please install them, 
 - [yaml-cpp (ver 0.6.3)](https://github.com/jbeder/yaml-cpp)
 - [Boost (ver 1.74.0)](https://www.boost.org/)
     - SPOPT only uses `boost::program_options`.
-- [AA](https://github.com/cvxgrp/aa)
+- [AA](https://github.com/cvxgrp/aa/tree/645cd5dd3970020ad78cd2837260725dbd433e23)
 - BLAS
 - LAPACK
 

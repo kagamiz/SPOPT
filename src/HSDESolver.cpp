@@ -238,4 +238,17 @@ namespace SPOPT {
     void HSDESolver::UpdateParameter(const ProblemData &problemData, const Eigen::VectorXd &v)
     {
     }
+
+    std::vector<double> HSDESolver::GetDualVariable(const ProblemData &problemData, const Eigen::VectorXd &v)
+    {
+        int vecLength = MatrixA(problemData).rows() + MatrixA(problemData).cols() + 1;
+        Eigen::VectorXd vecU = v.head(vecLength);
+
+        if (vecU(vecLength - 1) <= 0) {
+            return std::vector<double>();
+        }
+
+        Eigen::VectorXd y = vecU.segment(MatrixA(problemData).cols(), MatrixA(problemData).rows()) / vecU(vecLength - 1);
+        return std::vector<double>(y.data(), y.data() + y.size());
+    }
 }

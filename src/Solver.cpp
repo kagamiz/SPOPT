@@ -88,7 +88,7 @@ namespace SPOPT {
             free(aaprv);
         }
 
-        return std::make_pair(0, std::vector<double>());
+        return std::make_pair(GetPrimalObjValue(problemData, v_i), GetDualVariable(problemData, v_i));
     }
 
     void Solver::EnumerateStationaryPoints(std::string fileName)

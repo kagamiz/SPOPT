@@ -16,7 +16,9 @@ int main(int argc, char **argv)
         ("problem_data_config_file,p",	po::value<std::string>(&problemDataConfigFileName), "path of the problem data configuration file")
         ("solver_config_file,s",	    po::value<std::string>(&solverConfigFileName),	    "path of the solver configuration file")
         ("tssos,t",                     po::value<std::string>(&fileName),                  "converts problem data into a tssos format")
+    #ifdef __BUILD_WITH_MATLAB__
         ("mat,m",                       po::value<std::string>(&fileName),                  "converts problem data into a matlab format")
+    #endif
         ("extract,e",                   po::value<std::string>(&fileName),                  "extract solution(s) from a given truncated moment sequence")
         ("view_problem,v",                                                                  "shows the converted problem")
         ("all_real_eigenpairs,a",       po::value<std::string>(&fileName),                  "show all real eigenpair in ascending order of the eigenvalue")
@@ -50,10 +52,14 @@ int main(int argc, char **argv)
         std::map<std::string, SPOPT::Solver *> solvers;
         solvers["DualLagrangianSolver"] = new SPOPT::DualLagrangianSolver();
         solvers["HSDESolver"] = new SPOPT::HSDESolver();
+        #ifdef __BUILD_WITH_MOSEK__
         solvers["MOSEKSolver"] = new SPOPT::MOSEKSolver();
+        #endif
+        #ifdef __BUILD_WITH_SCS__
         solvers["SCSSolver"] = new SPOPT::SCSSolver();
+        #endif
 
-        auto solverData = solvers[solverConfig["solverType"].as<std::string>("MOSEKSolver")];
+        auto solverData = solvers[solverConfig["solverType"].as<std::string>("HSDESolver")];
         solverData->LoadConfig(solverConfigFileName);
 
         if (!vm.count("get_all_real_eigenpairs")) {
